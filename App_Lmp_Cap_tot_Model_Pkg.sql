@@ -1,4 +1,4 @@
-CREATE OR REPLACE PACKAGE BODY "APP_LMP_CAP_TOT_MODEL_PKG" IS
+CREATE OR REPLACE PACKAGE BODY "APP_LMP_CAP_HEDAYAT_PKG" IS
   -----------------------------------------------------------
   -------Created by H.Ebrahimi   1399/07/19
   procedure CAP_TARGET_INV_OG_PRC(p_month in varchar2,
@@ -15,7 +15,6 @@ CREATE OR REPLACE PACKAGE BODY "APP_LMP_CAP_TOT_MODEL_PKG" IS
     lv_target_inv      number(15, 3);
     lv_cnt             number;
   begin
-  
     select sum(t.qty_prod_plan_dayby)
       into lv_plan_tot
       from lmp.lmp_bas_day_by_days t
@@ -374,13 +373,16 @@ CREATE OR REPLACE PACKAGE BODY "APP_LMP_CAP_TOT_MODEL_PKG" IS
   
   end;
   -------------------------------------------------------------------------------------------
-  FUNCTION CREATE_COD_RUN_FUN(p_dat_start in date,
-                              P_dat_end   IN date,
-                              p_des       in varchar2) RETURN VARCHAR2 IS
-    V_CODE_RUN       VARCHAR2(13);
+  FUNCTION CREATE_COD_RUN_FUN(p_dat_start IN DATE,
+                              P_dat_end   IN DATE,
+                              p_des       in varchar2) RETURN varchar2 IS
+
+    V_CODE_RUN       LMP_BAS_RUN_HISTORIES.COD_RUN_RNHIS%type;
     lv_cnt           number;
     lv_last_plan_dat date;
-    lv_MAS_RUN_ID    number;
+    lv_MAS_RUN_ID    Mas_Msch_Run_Histories.Msch_Run_History_Id%type;
+
+
   BEGIN
     select count(1)
       into lv_cnt
@@ -391,6 +393,7 @@ CREATE OR REPLACE PACKAGE BODY "APP_LMP_CAP_TOT_MODEL_PKG" IS
     V_CODE_RUN := TO_CHAR(SYSDATE, 'YYYYMMDD') * 100 + lv_cnt;
     V_CODE_RUN := 'CAP' || V_CODE_RUN;
   
+  --WHAT IS LAST DAY OF CURENT MONTH?
     select max(cc.Dat_Calde)
       into lv_last_plan_dat
       from aac_lmp_calendar_viw cc
@@ -399,12 +402,14 @@ CREATE OR REPLACE PACKAGE BODY "APP_LMP_CAP_TOT_MODEL_PKG" IS
               from aac_lmp_calendar_viw c
              where c.Dat_Calde = trunc(p_dat_start));
   
+  --LAST EXECUTION RUN NUMBER OF MASTER MODEL
     Select Max(t.Msch_Run_History_Id) as Msch_Run_History_Id
       into lv_MAS_RUN_ID
       From mas.Mas_Msch_Run_Histories t
      Where Nvl(t.Num_Module_Mrhis, 1) = 20
        and t.lkp_sta_model_mrhis = 'SUCCESSFUL';
   
+  --
     INSERT INTO LMP_BAS_RUN_HISTORIES
       (BAS_RUN_HISTORY_ID,
        COD_RUN_RNHIS,
@@ -720,6 +725,7 @@ CREATE OR REPLACE PACKAGE BODY "APP_LMP_CAP_TOT_MODEL_PKG" IS
       from lmp_bas_run_histories t
      where t.cod_run_rnhis = p_cod_run;
   
+  -- RETURN THE CODE OF TOTAL RUN OF THE CURRENT DAY
     lv_cod_run_tot := app_lmp_cap_tot_model_pkg.ret_cod_run_cap_tot_fun;
   
     app_lmp_cap_tot_model_pkg.update_model_stat_step_prc(p_cod_run     => lv_cod_run_tot,
@@ -728,17 +734,7 @@ CREATE OR REPLACE PACKAGE BODY "APP_LMP_CAP_TOT_MODEL_PKG" IS
                                                          P_NUM_MODULE  => lv_module,
                                                          p_flg_stat    => 0);
   
-    /*select fp.val_att3_lmpfp
-     into lv_msg1
-     from lmp.lmp_bas_fix_params fp
-    where fp.lkp_typ_lmpfp = 'CAP_MODEL_STAT'
-      and fp.val_att1_lmpfp = 1;*/
-    /*select fp.val_att3_lmpfp
-     into lv_msg2
-     from lmp.lmp_bas_fix_params fp
-    where fp.lkp_typ_lmpfp = 'CAP_MODEL_STAT'
-      and fp.val_att1_lmpfp = 2;*/
-    insert into lmp_bas_model_run_stats
+       insert into lmp_bas_model_run_stats
       (bas_model_run_stat_id,
        cod_run_mosta,
        num_step_mosta,
@@ -4450,11 +4446,12 @@ CREATE OR REPLACE PACKAGE BODY "APP_LMP_CAP_TOT_MODEL_PKG" IS
                                                            p_num_step    => 3,
                                                            P_NUM_MODULE  => 30,
                                                            p_flg_stat    => 0);
-     <<start_Project>>
-     
+     <<create_virtual_orders>>
+     <<IGNORE_FOR_NOW>>
       app_lmp_sop_model_pkg.create_order_info_tot_prc;
       app_lmp_sop_model_pkg.create_virtual_order_prc;
-    
+   
+
       app_lmp_global_pkg.insert_log_prc(p_fun_nam   => 'End_Create_Order',
                                         p_inputs    => '',
                                         p_outputs   => to_char(sysdate,
@@ -4472,6 +4469,8 @@ CREATE OR REPLACE PACKAGE BODY "APP_LMP_CAP_TOT_MODEL_PKG" IS
       p_num_step   => 3,
       p_flg_ok     => 1,
       p_des_error  => NULL);*/
+      
+       
     exception
       when others then
         null;
@@ -4503,7 +4502,7 @@ CREATE OR REPLACE PACKAGE BODY "APP_LMP_CAP_TOT_MODEL_PKG" IS
     END;
     --end;
     commit;
-  
+  <<CREATE_CODE_RUN>>
     --create cod_run
     lv_cod_run := APP_LMP_CAP_TOT_MODEL_PKG.CREATE_COD_RUN_FUN(p_dat_start => trunc(sysdate),
                                                                P_dat_end   => trunc(sysdate + 29 + 30),
@@ -4512,6 +4511,7 @@ CREATE OR REPLACE PACKAGE BODY "APP_LMP_CAP_TOT_MODEL_PKG" IS
                                                                                       'YYYY-MM-DD hh:mi:ss'));
   
     begin
+    --OUR CSHARP PROGRAM USE OUTPUT OF THIS FUNCTION
       APP_LMP_CAP_TOT_MODEL_PKG.create_model_data_prc(p_cod_run => lv_cod_run);
     exception
       when others then
@@ -8151,11 +8151,7 @@ CREATE OR REPLACE PACKAGE BODY "APP_LMP_CAP_TOT_MODEL_PKG" IS
     lv_msg1 varchar2(500);
     lv_user varchar2(500);
   begin
-    ---p_flg_stat :=0  running
-    ---p_flg_stat :=1  successful
-    ---p_flg_stat :=2  error
-  
-    ---insert data (running)
+ 
     if (p_flg_stat = 0) then
     
       select fp.val_att3_lmpfp
@@ -8521,16 +8517,7 @@ CREATE OR REPLACE PACKAGE BODY "APP_LMP_CAP_TOT_MODEL_PKG" IS
   END;
 
   --------------------------created by s.boosaiedi 98/05/20
-  function ret_cod_run_cap_tot_fun return varchar2 deterministic is
-    lv_cod_run varchar2(15);
-  begin
-    SELECT MAX(H.COD_RUN_RNHIS)
-      into lv_cod_run
-      FROM LMP.LMP_BAS_RUN_HISTORIES H
-     WHERE H.NUM_MODULE_RNHIS = 0
-       and trunc(h.create_date) >= trunc(sysdate);
-    return lv_cod_run;
-  end;
+
   ----------------------------\\ created by s.saeidi 1399/10/01
   function cal_date_end_model_prc return number is
     lv_dat_end date;
@@ -8554,7 +8541,4 @@ CREATE OR REPLACE PACKAGE BODY "APP_LMP_CAP_TOT_MODEL_PKG" IS
     --end if;
   end;
 
-END app_lmp_cap_tot_model_pkg;
-
-
---end of project
+END APP_LMP_CAP_HEDAYAT_PKG;
