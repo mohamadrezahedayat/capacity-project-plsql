@@ -3479,18 +3479,7 @@ CREATE OR REPLACE PACKAGE BODY "APP_LMP_CAP_HEDAYAT_PKG" IS
            p_cod_run);
       end loop;
     end loop;
-  
-    --rem box cap
-    /*for ii in (select cv.statn_bas_station_id, cv.dat_day, cv.avg_tot
-                 from mas_lmp_box_rem_cap_viw cv) loop
-      update lmp.lmp_bas_capacities cc
-         set cc.qty_capacity_bacap = ii.avg_tot
-       where cc.statn_bas_station_id = ii.statn_bas_station_id
-         and cc.dat_day_bacap = ii.dat_day
-         and cc.cod_run_bacap = p_cod_run;
-    end loop;*/
-    --end rem box cap
-  
+    
     --min_inventory
     for s in (select st.bas_station_id,
                      pa.area_id,
