@@ -17,7 +17,7 @@ OR REPLACE PACKAGE "AAA_CAP_MODEL_HEDAYAT" IS
   code_run_tot_global_variable VARCHAR2(15);
   
   /*declare functions and procedures*/
-  PROCEDURE FILL_LMP_BAS_RUN_HISTORIES (
+  PROCEDURE FILL_BAS_RUN_HISTORIES_PRC (
     p_date_start IN DATE,
     P_date_end IN DATE,
     p_description IN VARCHAR2

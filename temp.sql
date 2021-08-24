@@ -1,8 +1,8 @@
 FUNCTION calculate_cap_heat_temp_fun(
-  pr_dat_calde   in date,
-  pr_num_furnace in lmp.lmp_bas_fix_params.val_att1_lmpfp%type,
-  pr_pdw         in lmp.lmp_bas_fix_params.val_att2_lmpfp%type,
-  pr_iu          in lmp.lmp_bas_fix_params.val_att7_lmpfp%type
+  p_dat_calde   in date,
+  p_num_furnace in lmp.lmp_bas_fix_params.val_att1_lmpfp%type,
+  p_pdw         in lmp.lmp_bas_fix_params.val_att2_lmpfp%type,
+  p_iu          in lmp.lmp_bas_fix_params.val_att7_lmpfp%type
   ) return number IS
   lv_stop number;
   
@@ -14,21 +14,21 @@ FUNCTION calculate_cap_heat_temp_fun(
       lmp.lmp_bas_fix_params fp
     WHERE
       fp.lkp_typ_lmpfp = 'FURNACE_STOP'
-      AND fp.val_att1_lmpfp = pr_num_furnace
-      AND fp.dat_att_lmpfp = pr_dat_calde;
+      AND fp.val_att1_lmpfp = p_num_furnace
+      AND fp.dat_att_lmpfp = p_dat_calde;
 
     EXCEPTION
       WHEN no_data_found THEN lv_stop := 0;
     END;
 
-    return (24 - lv_stop) * i.pr_iu * i.pr_pdw;
+    return (24 - lv_stop) * i.p_iu * i.p_pdw;
     
 end;
 
 PROCEDURE insert_cap_heat_temp_prc(
-  pr_cap_heat_temp in number,
-  pr_dat_calde     in date,
-  pr_num_furnace   in number) IS
+  p_cap_heat_temp in number,
+  p_dat_calde     in date,
+  p_num_furnace   in number) IS
   begin
     INSERT INTO
     lmp.lmp_cap_heat_plans (
@@ -42,18 +42,18 @@ PROCEDURE insert_cap_heat_temp_prc(
   VALUES
     (
       lmp.lmp_cap_heat_plans_seq.nextval,
-      pr_dat_calde,
+      p_dat_calde,
       code_run_global_variable,
-      pr_num_furnace,
-      pr_cap_heat_temp,
+      p_num_furnace,
+      p_cap_heat_temp,
       'تعداد'
     );
   
 end;
 
 PROCEDURE insert_cap_heat_prc(
-  pr_cap_heat      in number,
-  pr_dat_calde     in date) IS
+  p_cap_heat      in number,
+  p_dat_calde     in date) IS
   begin
     INSERT INTO
       lmp.lmp_bas_capacities (
@@ -67,15 +67,15 @@ PROCEDURE insert_cap_heat_prc(
       (
         lmp.lmp_bas_capacities_seq.nextval,
         NULL,
-        pr_dat_calde,
+        p_dat_calde,
         code_run_global_variable,
-        pr_cap_heat
+        p_cap_heat
       ); 
   
 end;
 
 PROCEDURE calculate_cap_heat_prc(
-  pr_dat_calde in date) IS
+  p_dat_calde in date) IS
   lv_cap_heat := 0;
   lv_cap_heat_temp NUMBER;
   begin
@@ -94,10 +94,10 @@ PROCEDURE calculate_cap_heat_prc(
     LOOP
       BEGIN
         -- calculate capacity heat  of each parameter in a specific date
-        lv_cap_heat_temp := calculate_cap_heat_temp_fun(pr_dat_calde, num_furnace, pdw, iu);
+        lv_cap_heat_temp := calculate_cap_heat_temp_fun(p_dat_calde, num_furnace, pdw, iu);
 
         -- insert capacity heat of each parameter in a specific date to lmp.lmp_cap_heat_plans 
-        insert_cap_heat_temp_prc( cap_heat_temp , pr_dat_calde, num_furnace);
+        insert_cap_heat_temp_prc( cap_heat_temp , p_dat_calde, num_furnace);
 
         -- calculate capacity sum of heats in a specific date
         lv_cap_heat := lv_cap_heat + lv_cap_heat_temp;
@@ -105,11 +105,11 @@ PROCEDURE calculate_cap_heat_prc(
     END LOOP;
 
     -- insert capacity total heat of all parameters  a specific date to lmp.lmp_bas_capacities
-    insert_cap_heat_prc( lv_cap_heat, pr_dat_calde);
+    insert_cap_heat_prc( lv_cap_heat, p_dat_calde);
 end;
 
 function calculate_lv_cap(
-  pr_calde_dat in date) return number is
+  p_calde_dat in date) return number is
   lv_cap number:=0;
   begin
     FOR t IN (
@@ -137,7 +137,7 @@ function calculate_lv_cap(
               FROM
                 aac_lmp_calendar_viw C
               WHERE
-                C.Dat_Calde = pr_calde_dat
+                C.Dat_Calde = p_calde_dat
             )
         ) t1,
         (
@@ -148,7 +148,7 @@ function calculate_lv_cap(
           FROM
             lmp.lmp_cap_maintenances m
           WHERE
-            m.dat_day_camai = pr_calde_dat
+            m.dat_day_camai = p_calde_dat
         ) t2
       WHERE
         t1.dat_calde = t2.dat_day_camai(+)
@@ -164,8 +164,8 @@ function calculate_lv_cap(
 end;
 
 PROCEDURE insert_lv_cap_prc(
-  pr_lv_cap in number,
-  pr_dat_calde in date,
+  p_lv_cap in number,
+  p_dat_calde in date,
   )is
   lv_cap           NUMBER := 0;
   lv_pcn_nc_slab   NUMBER := 0;
@@ -174,7 +174,7 @@ PROCEDURE insert_lv_cap_prc(
   begin
     lv_cap :=calculate_lv_cap(d.dat_calde);
 
-    IF pr_dat_calde > lv_dat_start_smc THEN
+    IF p_dat_calde > lv_dat_start_smc THEN
       INSERT INTO
         lmp.lmp_bas_capacities (
           bas_capacity_id,
@@ -187,7 +187,7 @@ PROCEDURE insert_lv_cap_prc(
         (
           lmp.lmp_bas_capacities_seq.nextval,
           41,
-          pr_dat_calde,
+          p_dat_calde,
           round(
             lv_cap * ((100 - (lv_pcn_du_slab + lv_pcn_nc_slab)) / 100),
             3
@@ -199,7 +199,7 @@ PROCEDURE insert_lv_cap_prc(
 end;
 
 procedure insert_lv_cap_temp_prc(
-  pr_dat_calde in date
+  p_dat_calde in date
   )is
   lv_cap_temp number;
   begin
@@ -233,7 +233,7 @@ procedure insert_lv_cap_temp_prc(
               FROM
                 aac_lmp_calendar_viw C
               WHERE
-                C.Dat_Calde = pr_dat_calde
+                C.Dat_Calde = p_dat_calde
             )
         ) t1,
         (
@@ -245,7 +245,7 @@ procedure insert_lv_cap_temp_prc(
           FROM
             lmp.lmp_cap_maintenances m
           WHERE
-            m.dat_day_camai = pr_dat_calde
+            m.dat_day_camai = p_dat_calde
         ) t2
       WHERE
         t1.dat_calde = t2.dat_day_camai(+)
@@ -253,7 +253,7 @@ procedure insert_lv_cap_temp_prc(
     )
     LOOP
        lv_cap_temp := calc_lv_cap_temp_fun( 
-         pr_dat_calde,
+         p_dat_calde,
          t1.qty_prod_cap_statn,
          t1.val_prod_modifier_statn, 
          t2.qty_maintenace_camai );
@@ -270,7 +270,7 @@ procedure insert_lv_cap_temp_prc(
         (
           lmp.lmp_bas_capacities_seq.nextval,
           t.bas_station_id,
-          pr_dat_calde,
+          p_dat_calde,
           lv_cap_temp,
           code_run_global_variable
         );
@@ -279,25 +279,25 @@ procedure insert_lv_cap_temp_prc(
 end;
 
 function calc_lv_cap_temp_fun(
-  pr_dat_calde                in date,
-  pr_qty_prod_cap_statn       in number,
-  pr_val_prod_modifier_statn  in number,
-  pr_qty_maintenace_camai     in number
+  p_dat_calde                in date,
+  p_qty_prod_cap_statn       in number,
+  p_val_prod_modifier_statn  in number,
+  p_qty_maintenace_camai     in number
   ) return number is
   lv_cap_temp number := 0;
   begin
-    IF trunc(pr_dat_calde) = trunc(SYSDATE) THEN lv_cap_temp := (
+    IF trunc(p_dat_calde) = trunc(SYSDATE) THEN lv_cap_temp := (
         greatest(
-          pr_qty_prod_cap_statn * ((18.5 - (SYSDATE - trunc(SYSDATE)) * 24) / 24),
+          p_qty_prod_cap_statn * ((18.5 - (SYSDATE - trunc(SYSDATE)) * 24) / 24),
           0
-        ) * pr_val_prod_modifier_statn
+        ) * p_val_prod_modifier_statn
       );
 
     ELSE lv_cap_temp := (
         greatest(
-          pr_qty_prod_cap_statn * (1 - (pr_qty_maintenace_camai / 24)),
+          p_qty_prod_cap_statn * (1 - (p_qty_maintenace_camai / 24)),
           0
-        ) * pr_val_prod_modifier_statn
+        ) * p_val_prod_modifier_statn
       );
 
     END IF;
@@ -305,7 +305,7 @@ function calc_lv_cap_temp_fun(
 end;
 
 PROCEDURE insert_lv_cap_temp_hsm_prc(
-  pr_dat_calde in date
+  p_dat_calde in date
   )is
   lv_cap_temp       number;
   lv_3heat_coef     NUMBER := 0.95;
@@ -347,7 +347,7 @@ PROCEDURE insert_lv_cap_temp_hsm_prc(
               FROM
                 aac_lmp_calendar_viw C
               WHERE
-                C.Dat_Calde = pr_dat_calde
+                C.Dat_Calde = p_dat_calde
             )
         ) t1,
         (
@@ -359,7 +359,7 @@ PROCEDURE insert_lv_cap_temp_hsm_prc(
           FROM
             lmp.lmp_cap_maintenances m
           WHERE
-            m.dat_day_camai = pr_dat_calde
+            m.dat_day_camai = p_dat_calde
         ) t2
       WHERE
         t1.dat_calde = t2.dat_day_camai(+)
@@ -380,16 +380,16 @@ PROCEDURE insert_lv_cap_temp_hsm_prc(
       END IF;
 
       IF t.arstu_ide_pk_arstu = 'M.S.C CO/M.S.C/HSM/HSM1' THEN 
-        IF ((trunc(pr_dat_calde) + 18.5 / 24) <= lv_last_hsm_time) THEN lv_pcn_cap := 0;
+        IF ((trunc(p_dat_calde) + 18.5 / 24) <= lv_last_hsm_time) THEN lv_pcn_cap := 0;
 
         ELSIF (
-          (trunc(pr_dat_calde) + 18.5 / 24) > lv_last_hsm_time
+          (trunc(p_dat_calde) + 18.5 / 24) > lv_last_hsm_time
           )
           AND(
-            (trunc(pr_dat_calde - 1) + 18.5 / 24) < lv_last_hsm_time
+            (trunc(p_dat_calde - 1) + 18.5 / 24) < lv_last_hsm_time
           ) THEN lv_pcn_cap :=(
-            (trunc(pr_dat_calde) + 18.5 / 24) - greatest(
-              (trunc(pr_dat_calde - 1) + 18.5 / 24),
+            (trunc(p_dat_calde) + 18.5 / 24) - greatest(
+              (trunc(p_dat_calde - 1) + 18.5 / 24),
               lv_last_hsm_time
             )
           );
@@ -410,7 +410,7 @@ PROCEDURE insert_lv_cap_temp_hsm_prc(
             (
               lmp.lmp_bas_capacities_seq.nextval,
               t.bas_station_id,
-              pr_dat_calde,
+              p_dat_calde,
               greatest(
                 round(
                   lv_pcn_cap * lv_cap_temp * ((100 - lv_pcn_du_slab) / 100),
@@ -434,7 +434,7 @@ PROCEDURE insert_lv_cap_temp_hsm_prc(
           (
             lmp.lmp_bas_capacities_seq.nextval,
             t.bas_station_id,
-            pr_dat_calde,
+            p_dat_calde,
             lv_cap_temp,
             code_run_global_variable
           );
@@ -445,7 +445,7 @@ PROCEDURE insert_lv_cap_temp_hsm_prc(
 end;
 
 PROCEDURE insert_lv_cap_temp_crm_prc(
-  pr_dat_calde in date
+  p_dat_calde in date
   )is
   lv_cap_temp number;
 
@@ -480,7 +480,7 @@ PROCEDURE insert_lv_cap_temp_crm_prc(
               FROM
                 aac_lmp_calendar_viw C
               WHERE
-                C.Dat_Calde = pr_dat_calde
+                C.Dat_Calde = p_dat_calde
             )
         ) t1,
         (
@@ -492,7 +492,7 @@ PROCEDURE insert_lv_cap_temp_crm_prc(
           FROM
             lmp.lmp_cap_maintenances m
           WHERE
-            m.dat_day_camai = pr_dat_calde
+            m.dat_day_camai = p_dat_calde
         ) t2
       WHERE
         t1.dat_calde = t2.dat_day_camai(+)
@@ -518,7 +518,7 @@ PROCEDURE insert_lv_cap_temp_crm_prc(
         (
           lmp.lmp_bas_capacities_seq.nextval,
           t.bas_station_id,
-          pr_dat_calde,
+          p_dat_calde,
           lv_cap_temp,
           code_run_global_variable
         );
@@ -528,7 +528,7 @@ PROCEDURE insert_lv_cap_temp_crm_prc(
 end;
 
 PROCEDURE insert_lv_cap_temp_2_prc(
-  pr_dat_calde in date
+  p_dat_calde in date
   )is
   lv_cap_temp number;
 
@@ -557,7 +557,7 @@ PROCEDURE insert_lv_cap_temp_2_prc(
     (
       lmp.lmp_bas_capacities_seq.nextval,
       t.bas_station_id,
-      pr_dat_calde,
+      p_dat_calde,
       lv_cap_temp,
       code_run_global_variable
     );

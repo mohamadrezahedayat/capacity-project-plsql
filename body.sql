@@ -5,11 +5,9 @@
 -------------------------!-------------------!---------------------------------------------------
 CREATE
 OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS 
-  /*package type declaration*/
+  
   type date_calde_cursor_type is ref cursor return aac_lmp_calendar_viw.Dat_Calde%type;
-  /* end of package type declaration*/
-
-  /* define private functions and procedures*/
+  
   PROCEDURE fill_released_sch_prc
     IS 
       lv_released NUMBER;
@@ -210,7 +208,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
 
   PROCEDURE fill_lmp_bas_constraints_prc(
     p_history_record in history_record_type
-  ) IS 
+    ) IS 
     BEGIN
       INSERT INTO
         lmp.lmp_bas_constraints (
@@ -630,7 +628,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
       END IF;
   END;
 
-  PROCEDURE FILL_LMP_BAS_RUN_HISTORIES (
+  PROCEDURE FILL_BAS_RUN_HISTORIES_PRC (
     p_date_start IN DATE,
     P_date_end IN DATE,
     p_description IN VARCHAR2
@@ -653,7 +651,9 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
         );
 
       SELECT
-        MAX(t.Msch_Run_History_Id) AS Msch_Run_History_Id INTO lv_MAS_RUN_ID
+        MAX(t.Msch_Run_History_Id) AS Msch_Run_History_Id
+      INTO
+        lv_MAS_RUN_ID
       FROM
         mas.Mas_Msch_Run_Histories t
       WHERE
@@ -696,139 +696,714 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
       COMMIT;
   END;
 
-  PROCEDURE create_model_data_prc
-    IS
-    /* define local variables*/
-    lv_history_record history_record_type;
-    lv_month_cur VARCHAR2(6);
-    lv_month_next VARCHAR2(6);
-    lv_tot_cap NUMBER;
-    LV_COUNT NUMBER;
-    LV_CAP_AVLBL_TOT NUMBER;
-    LV_CAP_FURNACE NUMBER;
-    LV_CAP_CASTING NUMBER;
-    LV_FACTOR NUMBER;
-    lv_dat_start_smc DATE;
-    lv_round_base NUMBER;
-    BEGIN
-     
-      -- parameters:  p_num_step , P_NUM_MODULE, p_flg_stat
-      update_model_stat_step_prc(1, history_record_global.module,0);
+  FUNCTION calculate_cap_heat_temp_fun(
+    p_dat_calde   in date,
+    p_num_furnace in lmp.lmp_bas_fix_params.val_att1_lmpfp%type,
+    p_pdw         in lmp.lmp_bas_fix_params.val_att2_lmpfp%type,
+    p_iu          in lmp.lmp_bas_fix_params.val_att7_lmpfp%type
+    ) return number IS
+    lv_stop number;
+    
+    begin
+      SELECT
+        nvl(SUM(nvl(fp.val_att7_lmpfp, 0) + nvl(fp.val_att8_lmpfp, 0)), 0) 
+      INTO lv_stop
+      FROM
+        lmp.lmp_bas_fix_params fp
+      WHERE
+        fp.lkp_typ_lmpfp = 'FURNACE_STOP'
+        AND fp.val_att1_lmpfp = p_num_furnace
+        AND fp.dat_att_lmpfp = p_dat_calde;
 
-      fill_bas_model_run_stats_prc(history_record_global.module);
-      -- set---> des_status_rnhis = 'RUNNING STEP 1'
-      update_run_histories_prc(history_record_global.module);
+      EXCEPTION
+        WHEN no_data_found THEN lv_stop := 0;
+      END;
 
-      fill_sop_og_periods_prc(lv_history_record);
+      return (24 - lv_stop) * i.p_iu * i.p_pdw;
+      
+  end;
 
-      fill_lmp_bas_camp_plans_prc(history_record_global.dat_start, history_record_global.dat_end);
-  
-      fill_lmp_bas_parameters_prc(history_record_global.module);
+  PROCEDURE insert_cap_heat_temp_prc(
+    p_cap_heat_temp in number,
+    p_dat_calde     in date,
+    p_num_furnace   in number) IS
+    begin
+      INSERT INTO
+      lmp.lmp_cap_heat_plans (
+        cap_heat_plan_id,
+        dat_day_hetpl,
+        cod_run_hetpl,
+        num_furnace_hetpl,
+        QTY_MAX_TON_HETPL,
+        LKP_TYP_HETPL
+      )
+    VALUES
+      (
+        lmp.lmp_cap_heat_plans_seq.nextval,
+        p_dat_calde,
+        code_run_global_variable,
+        p_num_furnace,
+        p_cap_heat_temp,
+        'تعداد'
+      );
+    
+  end;
 
-      fill_lmp_bas_orders_prc();
+  PROCEDURE insert_cap_heat_prc(
+    p_cap_heat      in number,
+    p_dat_calde     in date) IS
+    begin
+      INSERT INTO
+        lmp.lmp_bas_capacities (
+          bas_capacity_id,
+          statn_bas_station_id,
+          dat_day_bacap,
+          cod_run_bacap,
+          qty_capacity_bacap
+        )
+      VALUES
+        (
+          lmp.lmp_bas_capacities_seq.nextval,
+          NULL,
+          p_dat_calde,
+          code_run_global_variable,
+          p_cap_heat
+        ); 
+    
+  end;
 
-      fill_lmp_bas_constraints_prc(lv_history_record);
+  PROCEDURE calculate_cap_heat_prc(
+    p_dat_calde in date) IS
+    lv_cap_heat := 0;
+    lv_cap_heat_temp NUMBER;
+    begin
 
-      cal_aas_data_viw_prc ();
+      -- for selected parameters calculate cap heat 
+      FOR i IN (
+        SELECT
+          t.val_att1_lmpfp AS num_furnace,
+          t.val_att2_lmpfp AS pdw,
+          t.val_att7_lmpfp AS iu
+        FROM
+          lmp.lmp_bas_fix_params t
+        WHERE
+          t.lkp_typ_lmpfp = 'FURNACE_CAPACITY'
+      )
+      LOOP
+        BEGIN
+          -- calculate capacity heat  of each parameter in a specific date
+          lv_cap_heat_temp := calculate_cap_heat_temp_fun(p_dat_calde, num_furnace, pdw, iu);
 
-      APP_LMP_CAP_TOT_MODEL_PKG.calculate_capacity_prc(code_run_global_variable );
+          -- insert capacity heat of each parameter in a specific date to lmp.lmp_cap_heat_plans 
+          insert_cap_heat_temp_prc( cap_heat_temp , p_dat_calde, num_furnace);
 
-      COMMIT;
-/*
-      app_lmp_cap_tot_model_pkg.cal_target_month_prc(code_run_global_variable );
+          -- calculate capacity sum of heats in a specific date
+          lv_cap_heat := lv_cap_heat + lv_cap_heat_temp;
+
+      END LOOP;
+
+      -- insert capacity total heat of all parameters  a specific date to lmp.lmp_bas_capacities
+      insert_cap_heat_prc( lv_cap_heat, p_dat_calde);
+  end;
+
+  function calculate_lv_cap(
+    p_calde_dat in date) return number is
+    lv_cap number:=0;
+    begin
+      FOR t IN (
+        SELECT
+          t1.bas_station_id,
+          nvl(t1.val_prod_modifier_statn, 0) AS val_prod_modifier_statn,
+          nvl(t2.qty_maintenace_camai, 0) AS qty_maintenace_camai
+        FROM
+          (
+            SELECT * FROM
+              ( 
+                SELECT
+                  st.bas_station_id,
+                  st.val_prod_modifier_statn
+                FROM
+                  lmp.lmp_bas_stations st,
+                  pms_areas pa
+                WHERE
+                  st.area_area_id = pa.area_id
+                  AND pa.arstu_ide_pk_arstu = 'M.S.C CO/M.S.C/SMC/CASTING AREA/CCM STATION/CCM'
+              ),
+              (
+                 SELECT
+                  C.Dat_Calde
+                FROM
+                  aac_lmp_calendar_viw C
+                WHERE
+                  C.Dat_Calde = p_calde_dat
+              )
+          ) t1,
+          (
+            SELECT
+              m.statn_bas_station_id,
+              m.dat_day_camai,
+              nvl(m.qty_maintenace_camai, 0) + nvl(m.qty_inactive_camai, 0) + nvl(m.qty_service_camai, 0) + nvl(m.qty_crane_camai, 0) AS qty_maintenace_camai
+            FROM
+              lmp.lmp_cap_maintenances m
+            WHERE
+              m.dat_day_camai = p_calde_dat
+          ) t2
+        WHERE
+          t1.dat_calde = t2.dat_day_camai(+)
+          AND t1.bas_station_id = t2.statn_bas_station_id(+)
+      )
+      LOOP
+        lv_cap := lv_cap + (
+          (24 - t.qty_maintenace_camai) * t.val_prod_modifier_statn
+        );
+
+      END LOOP;
+      return lv_cap;
+  end;
+
+  PROCEDURE insert_lv_cap_prc(
+    p_lv_cap in number,
+    p_dat_calde in date,
+    )is
+    lv_cap           NUMBER := 0;
+    lv_pcn_nc_slab   NUMBER := 0;
+    lv_pcn_du_slab   NUMBER := 0;
+    lv_dat_start_smc date := apps.api_mas_lmp_pkg.get_max_dat_prog_smc_Fun(apps.api_mas_models_pkg.Get_Last_AAS_Cod_Run_Fun);
+    begin
+      lv_cap :=calculate_lv_cap(d.dat_calde);
+
+      IF p_dat_calde > lv_dat_start_smc THEN
+        INSERT INTO
+          lmp.lmp_bas_capacities (
+            bas_capacity_id,
+            statn_bas_station_id,
+            dat_day_bacap,
+            qty_capacity_bacap,
+            cod_run_bacap
+          )
+        VALUES
+          (
+            lmp.lmp_bas_capacities_seq.nextval,
+            41,
+            p_dat_calde,
+            round(
+              lv_cap * ((100 - (lv_pcn_du_slab + lv_pcn_nc_slab)) / 100),
+              3
+            ),
+            code_run_global_variable
+          );
+
+      END IF;
+  end;
+
+  procedure insert_lv_cap_temp_prc(
+    p_dat_calde in date
+    )is
+    lv_cap_temp number;
+    begin
+      FOR t IN (
+        SELECT
+          t1.bas_station_id,
+          t1.arstu_ide_pk_arstu,
+          t1.qty_prod_cap_statn,
+          nvl(t1.val_prod_modifier_statn, 0) AS val_prod_modifier_statn,
+          nvl(t2.qty_maintenace_camai, 0) AS qty_maintenace_camai
+        FROM
+          (
+            SELECT *
+            FROM
+              (
+                SELECT
+                  st.bas_station_id,
+                  st.val_prod_modifier_statn,
+                  st.qty_prod_cap_statn,
+                  pa.arstu_ide_pk_arstu
+                FROM
+                  lmp.lmp_bas_stations st,
+                  pms_areas pa
+                WHERE
+                  st.area_area_id = pa.area_id
+                  AND pa.arstu_ide_pk_arstu = 'M.S.C CO/M.S.C/SMC/SLAB-CONDITIONING/PULPIT-9'
+              ),
+              (
+                SELECT
+                  C.Dat_Calde
+                FROM
+                  aac_lmp_calendar_viw C
+                WHERE
+                  C.Dat_Calde = p_dat_calde
+              )
+          ) t1,
+          (
+            SELECT
+              m.statn_bas_station_id,
+              m.dat_day_camai,
+              nvl(m.qty_maintenace_camai, 0) + nvl(m.qty_inactive_camai, 0) + nvl(m.qty_service_camai, 0) + nvl(m.qty_crane_camai, 0) AS qty_maintenace_camai,
+              m.num_furnace_camai
+            FROM
+              lmp.lmp_cap_maintenances m
+            WHERE
+              m.dat_day_camai = p_dat_calde
+          ) t2
+        WHERE
+          t1.dat_calde = t2.dat_day_camai(+)
+          AND t1.bas_station_id = t2.statn_bas_station_id(+)
+      )
+      LOOP
+        lv_cap_temp := calc_lv_cap_temp_fun( 
+          p_dat_calde,
+          t1.qty_prod_cap_statn,
+          t1.val_prod_modifier_statn, 
+          t2.qty_maintenace_camai );
+
+        INSERT INTO
+          lmp.lmp_bas_capacities (
+            bas_capacity_id,
+            statn_bas_station_id,
+            dat_day_bacap,
+            qty_capacity_bacap,
+            cod_run_bacap
+          )
+        VALUES
+          (
+            lmp.lmp_bas_capacities_seq.nextval,
+            t.bas_station_id,
+            p_dat_calde,
+            lv_cap_temp,
+            code_run_global_variable
+          );
+
+      END LOOP;
+  end;
+
+  function calc_lv_cap_temp_fun(
+    p_dat_calde                in date,
+    p_qty_prod_cap_statn       in number,
+    p_val_prod_modifier_statn  in number,
+    p_qty_maintenace_camai     in number
+    ) return number is
+    lv_cap_temp number := 0;
+    begin
+      IF trunc(p_dat_calde) = trunc(SYSDATE) THEN lv_cap_temp := (
+          greatest(
+            p_qty_prod_cap_statn * ((18.5 - (SYSDATE - trunc(SYSDATE)) * 24) / 24),
+            0
+          ) * p_val_prod_modifier_statn
+        );
+
+      ELSE lv_cap_temp := (
+          greatest(
+            p_qty_prod_cap_statn * (1 - (p_qty_maintenace_camai / 24)),
+            0
+          ) * p_val_prod_modifier_statn
+        );
+
+      END IF;
+    return lv_cap_temp;
+  end;
+
+  PROCEDURE insert_lv_cap_temp_hsm_prc(
+    p_dat_calde in date
+    )is
+    lv_cap_temp       number;
+    lv_3heat_coef     NUMBER := 0.95;
+    lv_2heat_coef     NUMBER := 0.69;
+    lv_pcn_du_slab    number := 0;
+    lv_pcn_cap        NUMBER;
+    lv_last_hsm_time  date:= apps.api_mas_run_simulators_pkg.return_hsm_available_time_fun;
+
+    begin
+      FOR t IN (
+        SELECT
+          t1.bas_station_id,
+          t1.arstu_ide_pk_arstu,
+          t1.qty_prod_cap_statn,
+          nvl(t1.val_prod_modifier_statn, 0) AS val_prod_modifier_statn,
+          nvl(t2.qty_maintenace_camai, 0) AS qty_maintenace_camai,
+          t2.num_furnace_camai
+        FROM
+          (
+            SELECT
+              *
+            FROM
+              (
+                SELECT
+                  st.bas_station_id,
+                  st.val_prod_modifier_statn,
+                  st.qty_prod_cap_statn,
+                  pa.arstu_ide_pk_arstu
+                FROM
+                  lmp.lmp_bas_stations st,
+                  pms_areas pa
+                WHERE
+                  st.area_area_id = pa.area_id
+                  AND pa.arstu_ide_pk_arstu LIKE 'M.S.C CO/M.S.C/HSM%'
+              ),
+              (
+                SELECT
+                  C.Dat_Calde
+                FROM
+                  aac_lmp_calendar_viw C
+                WHERE
+                  C.Dat_Calde = p_dat_calde
+              )
+          ) t1,
+          (
+            SELECT
+              m.statn_bas_station_id,
+              m.dat_day_camai,
+              nvl(m.qty_maintenace_camai, 0) + nvl(m.qty_inactive_camai, 0) + nvl(m.qty_service_camai, 0) + nvl(m.qty_crane_camai, 0) AS qty_maintenace_camai,
+              m.num_furnace_camai
+            FROM
+              lmp.lmp_cap_maintenances m
+            WHERE
+              m.dat_day_camai = p_dat_calde
+          ) t2
+        WHERE
+          t1.dat_calde = t2.dat_day_camai(+)
+          AND t1.bas_station_id = t2.statn_bas_station_id(+)
+      )
+      LOOP
+        lv_cap_temp := (
+          greatest(
+            t.qty_prod_cap_statn - t.qty_maintenace_camai,
+            0
+          ) * t.val_prod_modifier_statn
+        );  
+
+        IF t.num_furnace_camai = 3 THEN lv_cap_temp := lv_cap_temp * lv_3heat_coef;
+        END IF;
+
+        IF t.num_furnace_camai = 2 THEN lv_cap_temp := lv_cap_temp * lv_2heat_coef;
+        END IF;
+
+        IF t.arstu_ide_pk_arstu = 'M.S.C CO/M.S.C/HSM/HSM1' THEN 
+          IF ((trunc(p_dat_calde) + 18.5 / 24) <= lv_last_hsm_time) THEN lv_pcn_cap := 0;
+
+          ELSIF (
+            (trunc(p_dat_calde) + 18.5 / 24) > lv_last_hsm_time
+            )
+            AND(
+              (trunc(p_dat_calde - 1) + 18.5 / 24) < lv_last_hsm_time
+            ) THEN lv_pcn_cap :=(
+              (trunc(p_dat_calde) + 18.5 / 24) - greatest(
+                (trunc(p_dat_calde - 1) + 18.5 / 24),
+                lv_last_hsm_time
+              )
+            );
+
+          ELSE lv_pcn_cap := 1;
+
+          END IF;
+
+            INSERT INTO
+              lmp.lmp_bas_capacities (
+                bas_capacity_id,
+                statn_bas_station_id,
+                dat_day_bacap,
+                qty_capacity_bacap,
+                cod_run_bacap
+              )
+            VALUES
+              (
+                lmp.lmp_bas_capacities_seq.nextval,
+                t.bas_station_id,
+                p_dat_calde,
+                greatest(
+                  round(
+                    lv_pcn_cap * lv_cap_temp * ((100 - lv_pcn_du_slab) / 100),
+                    3
+                  ),
+                  0
+                ),
+                code_run_global_variable
+              );
+
+        ELSE
+          INSERT INTO
+            lmp.lmp_bas_capacities (
+              bas_capacity_id,
+              statn_bas_station_id,
+              dat_day_bacap,
+              qty_capacity_bacap,
+              cod_run_bacap
+            )
+          VALUES
+            (
+              lmp.lmp_bas_capacities_seq.nextval,
+              t.bas_station_id,
+              p_dat_calde,
+              lv_cap_temp,
+              code_run_global_variable
+            );
+
+        END IF;
+
+      END LOOP;
+  end;
+
+  PROCEDURE insert_lv_cap_temp_crm_prc(
+    p_dat_calde in date
+    )is
+    lv_cap_temp number;
+
+    begin
+      FOR t IN (
+        SELECT
+          t1.bas_station_id,
+          t1.arstu_ide_pk_arstu,
+          t1.qty_prod_cap_statn,
+          nvl(t1.val_prod_modifier_statn, 0) AS val_prod_modifier_statn,
+          nvl(t2.qty_maintenace_camai, 0) AS qty_maintenace_camai,
+          t2.num_furnace_camai
+        FROM
+          (
+            SELECT * FROM
+              (
+                SELECT
+                  st.bas_station_id,
+                  st.val_prod_modifier_statn,
+                  st.qty_prod_cap_statn,
+                  pa.arstu_ide_pk_arstu
+                FROM
+                  lmp.lmp_bas_stations st,
+                  pms_areas pa
+                WHERE
+                  st.area_area_id = pa.area_id
+                  AND pa.arstu_ide_pk_arstu LIKE 'M.S.C CO/M.S.C/CCM%'
+              ),
+              (
+                SELECT
+                  C.Dat_Calde
+                FROM
+                  aac_lmp_calendar_viw C
+                WHERE
+                  C.Dat_Calde = p_dat_calde
+              )
+          ) t1,
+          (
+            SELECT
+              m.statn_bas_station_id,
+              m.dat_day_camai,
+              nvl(m.qty_maintenace_camai, 0) + nvl(m.qty_inactive_camai, 0) + nvl(m.qty_service_camai, 0) + nvl(m.qty_crane_camai, 0) AS qty_maintenace_camai,
+              m.num_furnace_camai
+            FROM
+              lmp.lmp_cap_maintenances m
+            WHERE
+              m.dat_day_camai = p_dat_calde
+          ) t2
+        WHERE
+          t1.dat_calde = t2.dat_day_camai(+)
+          AND t1.bas_station_id = t2.statn_bas_station_id(+)
+      )
+      LOOP
+        lv_cap_temp := (
+          greatest(
+            t.qty_prod_cap_statn - t.qty_maintenace_camai,
+            0
+          ) * t.val_prod_modifier_statn
+        );
+
+        INSERT INTO
+          lmp.lmp_bas_capacities (
+            bas_capacity_id,
+            statn_bas_station_id,
+            dat_day_bacap,
+            qty_capacity_bacap,
+            cod_run_bacap
+          )
+        VALUES
+          (
+            lmp.lmp_bas_capacities_seq.nextval,
+            t.bas_station_id,
+            p_dat_calde,
+            lv_cap_temp,
+            code_run_global_variable
+          );
+
+      END LOOP;
+      
+  end;
+
+  PROCEDURE insert_lv_cap_temp_2_prc(
+    p_dat_calde in date
+    )is
+    lv_cap_temp number;
+
+    begin
+      FOR t IN (
+        SELECT
+          st.bas_station_id,
+          st.qty_prod_cap_statn
+        FROM
+          lmp_bas_stations st
+        WHERE
+          st.bas_station_id = 46
+      )
+    LOOP
+      lv_cap_temp := nvl(t.qty_prod_cap_statn, 0);
 
       INSERT INTO
-        lmp.lmp_bas_fix_params (
-          bas_fix_param_id,
-          val_att1_lmpfp,
-          val_att4_lmpfp,
-          val_att2_lmpfp,
-          dat_att_lmpfp,
-          val_att3_lmpfp,
-          lkp_typ_lmpfp
+        lmp.lmp_bas_capacities (
+          bas_capacity_id,
+          statn_bas_station_id,
+          dat_day_bacap,
+          qty_capacity_bacap,
+          cod_run_bacap
         )
+      VALUES
+      (
+        lmp.lmp_bas_capacities_seq.nextval,
+        t.bas_station_id,
+        p_dat_calde,
+        lv_cap_temp,
+        code_run_global_variable
+      );
+
+    END LOOP;
+      
+  end;
+
+  PROCEDURE insert_cap_inventory_prc 
+    is
+    lv_avail_inv NUMBER;
+    lv_min_inv_cap NUMBER;
+    begin
+
+      FOR s IN (
+        SELECT
+          st.bas_station_id,
+          pa.area_id,
+          nvl(st.qty_min_inv_statn, 0) qty_min_inv_statn
+        FROM
+          lmp.lmp_bas_stations st,
+          pms_areas pa
+        WHERE
+          pa.area_id = st.area_area_id
+          AND pa.arstu_ide_pk_arstu NOT LIKE 'M.S.C CO/M.S.C/CCM%'
+      )
+      LOOP
+        lv_min_inv_cap := s.qty_min_inv_statn;
+
+        SELECT
+          round(SUM(im.mu_wei) / 1000) INTO lv_avail_inv
+        FROM
+          mas_lmp_initial_mu_viw im,
+          lmp.lmp_bas_orders o
+        WHERE
+          im.station_id = s.bas_station_id
+          AND o.cod_run_lmpor = code_run_global_variable
+          AND o.flg_active_in_model_lmpor = 1
+          AND o.cod_order_lmpor = im.cod_ord_ordhe
+          AND o.num_order_lmpor = im.num_item_ordit;
+
+          IF lv_avail_inv < lv_min_inv_cap THEN 
+            FOR C IN (
+              SELECT
+                cal.Dat_Calde
+              FROM
+                aac_lmp_calendar_viw cal
+              WHERE
+                cal.Dat_Calde BETWEEN history_record_global.dat_start
+                AND history_record_global.dat_end
+              ORDER BY
+                cal.Dat_Calde
+            )
+            LOOP
+            -- ! ????
+              lv_avail_inv := lv_avail_inv * 1.05;
+
+              IF lv_avail_inv >= lv_min_inv_cap THEN EXIT;
+              END IF;
+
+              INSERT INTO
+                lmp.lmp_cap_dbd_inputs (
+                  cap_dbd_input_id,
+                  statn_bas_station_id,
+                  dat_day_dbdin,
+                  lkp_typ_dbdin,
+                  cod_run_dbdin,
+                  qty_min_dbdin
+                )
+              VALUES
+                (
+                  lmp.lmp_cap_dbd_inputs_seq.nextval,
+                  s.bas_station_id,
+                  C.dat_calde,
+                  'INVENTORY_CAPACITY',
+                  code_run_global_variable,
+                  round(lv_avail_inv)
+                );
+
+            END LOOP;
+
+          END IF;
+
+      END LOOP;
+  end;
+
+  PROCEDURE calculate_capacity_prc
+    IS 
+    BEGIN
+      FOR j IN (
+        SELECT
+          C.Dat_Calde
+        FROM
+          aac_lmp_calendar_viw C
+        WHERE
+          C.Dat_Calde BETWEEN history_record_global.dat_start
+          AND history_record_global.dat_end
+      )
+      LOOP
+        -- calculate_cap_heat
+        calculate_cap_heat_prc(j.dat_calde);
+
+        --CCM
+        insert_lv_cap_prc(j.dat_calde);
+
+        --Send to HSM
+        insert_lv_cap_temp_prc(j.dat_calde);
+
+        --HSM
+        insert_lv_cap_temp_hsm_prc(j.dat_calde);
+
+        --CRM
+        insert_lv_cap_temp_crm_prc(j.dat_calde);
+
+        --SHP
+        insert_lv_cap_temp_2_prc(j.dat_calde);
+      END LOOP;
+
+      --min_inventory
+      insert_cap_inventory_prc();
+
+  END;
+
+  function calc_dat_start_fun (
+    p_month in VARCHAR2) return Date is
+    lv_start_dat   DATE;
+    begin
       SELECT
-        lmp.lmp_bas_fix_params_seq.nextval,
-        station_id,
-        cod_ord_group,
-        max_ton,
-        Dat_Calde,
-        p_cod_run,
-        'MAX_TON_DAY'
-      FROM
-        (
-          SELECT
-            t.val_att1_lmpfp AS station_id,
-            t.val_att4_lmpfp AS cod_ord_group,
-            t.val_att2_lmpfp AS max_ton
-          FROM
-            lmp.lmp_bas_fix_params t
-          WHERE
-            t.lkp_typ_lmpfp = 'DAY_BY_DAY'
-            AND t.val_att1_lmpfp IN (41, 45, 68, 67, 65, 66, 77, 78, 79)
-        ),
-        (
-          SELECT
-            C .Dat_Calde
+            MIN(C.Dat_Calde)
+          INTO
+            lv_start_dat
           FROM
             aac_lmp_calendar_viw C
           WHERE
-            C .Dat_Calde BETWEEN history_record_global.dat_start
-            AND history_record_global.dat_end
-        );
+            C.v_Dat_Calde_In_6 = p_month;
+      return lv_start_dat
+  end;
 
-      UPDATE
-        lmp.lmp_bas_fix_params t
-      SET
-        t.val_att2_lmpfp = t.val_att2_lmpfp * 3
-      WHERE
-        t.lkp_typ_lmpfp = 'MAX_TON_DAY'
-        AND t.dat_att_lmpfp > history_record_global.dat_end - 10
-        AND t.val_att3_lmpfp = p_cod_run;
-
-      app_lmp_cap_reports_pkg.set_fix_ton_user_prc;
-
-      COMMIT;
-
-      INSERT INTO
-        lmp.lmp_cap_dbd_inputs (
-          CAP_DBD_INPUT_ID,
-          DAT_DAY_DBDIN,
-          STATN_BAS_STATION_ID,
-          COD_ORDER_GROUP_DBDIN,
-          QTY_MIN_DBDIN,
-          QTY_PLAN_DBDIN,
-          QTY_MAX_DBDIN,
-          COD_RUN_DBDIN,
-          LKP_TYP_DBDIN
-        )
-      SELECT
-        lmp.lmp_cap_dbd_inputs_seq.nextval,
-        CAP_DBD.DAT_DAY_DBDIN AS date_day,
-        CAP_DBD.STATN_BAS_STATION_ID AS station_Id,
-        CAP_DBD.COD_ORDER_GROUP_DBDIN AS cod_order_group,
-        CAP_DBD.QTY_MIN_DBDIN AS qty_min,
-        CAP_DBD.QTY_PLAN_DBDIN AS qty_plan,
-        CAP_DBD.QTY_MAX_DBDIN AS qty_max,
-        p_cod_run,
-        CAP_DBD.LKP_TYP_DBDIN AS lkp_typ
-      FROM
-        LMP.LMP_CAP_DBD_INPUTS CAP_DBD
-      WHERE
-        CAP_DBD.LKP_TYP_DBDIN = 'FIX_TON_DAY'
-        AND CAP_DBD.COD_RUN_DBDIN = '0'
-        AND cap_dbd.dat_day_dbdin BETWEEN history_record_global.dat_start
-        AND history_record_global.dat_end;
-
-      lv_month_cur := to_char(SYSDATE, 'YYYYMM');
-
-      SELECT
-        MIN(C .v_Dat_Calde_In_6) INTO lv_month_next
-      FROM
-        aac_lmp_calendar_viw C
-      WHERE
-        C .v_Dat_Calde_In_6 > lv_month_cur;
-
+  procedure fill_total_station_prc(
+    p_month in VARCHAR2,
+    p_start_dat in DATE
+    )is
+    lv_plan        NUMBER;
+    lv_plan_sch    NUMBER;
+    lv_max         NUMBER;
+    lv_min         NUMBER;
+    lv_act         NUMBER;
+    begin
       FOR i IN (
         SELECT
           ts.qty_plan_lstst,
@@ -846,7 +1421,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
           AND pa.area_id = st.area_area_id
           AND st.bas_station_id = ts.statn_bas_station_id
           AND ts.lkp_type_lstst = 'CAP_TARGET_STATION'
-          AND ts.val_month_lstst = lv_month_next
+          AND ts.val_month_lstst = p_month
           AND (
             ts.qty_plan_lstst > 0
             OR ts.qty_max_lstst > 0
@@ -854,589 +1429,639 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
           )
       )
       LOOP
-      
-      INSERT INTO
-        LMP.LMP_CAP_DBD_INPUTS (
-          CAP_DBD_INPUT_ID,
-          STATN_BAS_STATION_ID,
-          VAL_MONTH_DBDIN,
-          LKP_TYP_DBDIN,
-          QTY_PLAN_DBDIN,
-          COD_RUN_DBDIN,
-          QTY_MAX_DBDIN,
-          QTY_MIN_DBDIN
-        )
-      VALUES
-        (
-          lmp.lmp_cap_dbd_inputs_seq.nextval,
-          i.statn_bas_station_id,
-          lv_month_next,
-          'TOTAL_STATION',
-          (
-            i.qty_plan_lstst
-            
-          ) * (
-            (
-              SELECT
-                COUNT(C .Dat_Calde)
-              FROM
-                aac_lmp_calendar_viw C
-              WHERE
-                C .v_Dat_Calde_In_6 = lv_month_next
-                AND C .Dat_Calde <= history_record_global.dat_end
-            ) / (
-              SELECT
-                COUNT(C .Dat_Calde)
-              FROM
-                aac_lmp_calendar_viw C
-              WHERE
-                C .v_Dat_Calde_In_6 = lv_month_next
-            )
-          ),
-          p_cod_run,
-          (
-            i.qty_max_lstst
-          
-          ) * (
-            (
-              SELECT
-                COUNT(C .Dat_Calde)
-              FROM
-                aac_lmp_calendar_viw C
-              WHERE
-                C .v_Dat_Calde_In_6 = lv_month_next
-                AND C .Dat_Calde <= history_record_global.dat_end
-            ) / (
-              SELECT
-                COUNT(C .Dat_Calde)
-              FROM
-                aac_lmp_calendar_viw C
-              WHERE
-                C .v_Dat_Calde_In_6 = lv_month_next
-            )
-          ),
-          (
-            i.qty_min_lstst
-          
-          ) * (
-            (
-              SELECT
-                COUNT(C .Dat_Calde)
-              FROM
-                aac_lmp_calendar_viw C
-              WHERE
-                C .v_Dat_Calde_In_6 = lv_month_next
-                AND C .Dat_Calde <= history_record_global.dat_end
-            ) / (
-              SELECT
-                COUNT(C .Dat_Calde)
-              FROM
-                aac_lmp_calendar_viw C
-              WHERE
-                C .v_Dat_Calde_In_6 = lv_month_next
-            )
-          )
-        );
+        --smc
+        IF i.statn_bas_station_id = 41 THEN lv_plan := nvl(i.qty_plan_lstst, 0);
 
-      END
-      LOOP
-      ;
+        lv_min := nvl(i.qty_min_lstst, 0);
+        lv_max := nvl(i.qty_max_lstst, 0);
 
-      FOR i IN (
         SELECT
-          cdi.statn_bas_station_id,
-          cdi.qty_plan_lstst,
-          cdi.cod_order_group_lstst,
-          cdi.Qty_Max_Lstst,
-          cdi.Qty_Min_Lstst,
-          pa.area_id,
-          pa.arstu_ide_pk_arstu
+          nvl(round(SUM(wp.WEI_ACTL_PRODT) / 1000), 0) INTO lv_act
         FROM
-          LMP.Lmp_Sop_Target_Stations cdi,
-          lmp.lmp_bas_stations st,
-          pms.pms_areas pa
+          PMS_FOR_LMP_WEI_PROD_VIW wp
         WHERE
-          cdi.lkp_type_lstst = 'CAP_TARGET_OG'
-          AND cdi.val_month_lstst = lv_month_next
-          AND pa.area_id = st.area_area_id
-          AND st.bas_station_id = cdi.statn_bas_station_id
-          AND cdi.cod_run_cap_lstst = '0'
-      )
-      LOOP
-      
-      INSERT INTO
-        LMP.LMP_CAP_DBD_INPUTS (
-          CAP_DBD_INPUT_ID,
-          STATN_BAS_STATION_ID,
-          VAL_MONTH_DBDIN,
-          LKP_TYP_DBDIN,
-          QTY_PLAN_DBDIN,
-          COD_RUN_DBDIN,
-          QTY_MIN_DBDIN,
-          QTY_Max_DBDIN,
-          COD_ORDER_GROUP_DBDIN
-        )
-      VALUES
-        (
-          lmp.lmp_cap_dbd_inputs_seq.nextval,
-          i.statn_bas_station_id,
-          lv_month_next,
-          'TOTAL_STATION_OG',
-          i.qty_plan_lstst * (
-            (
-              SELECT
-                COUNT(C .Dat_Calde)
-              FROM
-                aac_lmp_calendar_viw C
-              WHERE
-                C .v_Dat_Calde_In_6 = lv_month_next
-                AND C .Dat_Calde <= history_record_global.dat_end
-            ) / (
-              SELECT
-                COUNT(C .Dat_Calde)
-              FROM
-                aac_lmp_calendar_viw C
-              WHERE
-                C .v_Dat_Calde_In_6 = lv_month_next
-            )
-          ),
-          code_run_global_variable,
-          i.qty_min_lstst,
-          i.qty_max_lstst,
-          i.cod_order_group_lstst
-        );
+          wp.NAM_BRIEF LIKE 'CCM%'
+          AND wp.DATE_GEN < history_record_global.dat_start;
 
-      END
-      LOOP
-      ;
-
-      FOR i IN (
         SELECT
-          t.statn_bas_station_id,
-          t.val_month_dbdin,
-          t.qty_plan_dbdin,
-          t.qty_max_dbdin,
-          t.qty_min_dbdin
+          nvl(round(SUM(t1.WEI_ASSIGNED_KG) / 1000), 0) INTO lv_plan_sch
         FROM
-          lmp.lmp_cap_dbd_inputs t
+          apps.mas_lmp_assigned_slab_typ_viw t1
         WHERE
-          t.lkp_typ_dbdin = 'TOTAL_STATION'
-          AND t.cod_run_dbdin = code_run_global_variable
-          AND t.statn_bas_station_id IN (41)
-          AND (
-            t.qty_plan_dbdin > 0
-            OR t.qty_max_dbdin > 0
-            OR t.qty_min_dbdin > 0
+          t1.NUM_AREA_ID_LOC_AASTH IN (161, 160, 162, 163, 7375133);
+
+        INSERT INTO
+          LMP.LMP_CAP_DBD_INPUTS (
+            CAP_DBD_INPUT_ID,
+            STATN_BAS_STATION_ID,
+            VAL_MONTH_DBDIN,
+            LKP_TYP_DBDIN,
+            QTY_PLAN_DBDIN,
+            QTY_MIN_DBDIN,
+            QTY_MAX_DBDIN,
+            COD_RUN_DBDIN
           )
-      )
-      LOOP
-        lv_dat_start_smc := apps.api_mas_lmp_pkg.get_max_dat_prog_smc_Fun(apps.api_mas_models_pkg.Get_Last_AAS_Cod_Run_Fun);
+        VALUES
+          (
+            lmp.lmp_cap_dbd_inputs_seq.nextval,
+            i.statn_bas_station_id,
+            p_month,
+            'TOTAL_STATION',
+            greatest(lv_plan - (nvl(lv_act, 0) + nvl(lv_plan_sch, 0)), 0 ),
+            greatest(lv_min  - (nvl(lv_act, 0) + nvl(lv_plan_sch, 0)), 0 ),
+            greatest(lv_max  - (nvl(lv_act, 0) + nvl(lv_plan_sch, 0)), 0 ),
+            code_run_global_variable
+          );
 
-      SELECT
-        COUNT(1) INTO LV_COUNT
-      FROM
-        APPS.LMP_AAC_CALENDAR_VIW V
-      WHERE
-        V.V_DAT_CALDE_IN_6 = I.VAL_MONTH_DBDIN
-        AND V.DAT_CALDE > lv_dat_start_smc;
+        END IF;
 
-      SELECT
-        GREATEST(
-          (8 * 24 * LV_COUNT) - nvl(
-            SUM(
-              nvl(fp.val_att7_lmpfp, 0) + nvl(fp.val_att8_lmpfp, 0)
+        --51
+        IF i.statn_bas_station_id = 45 THEN lv_plan := nvl(i.qty_plan_lstst, 0);
+
+        lv_min := nvl(i.qty_min_lstst, 0);
+
+        lv_max := nvl(i.qty_max_lstst, 0);
+
+        SELECT
+          nvl(SUM(t.wei_actl_prdst) / 1000, 0) INTO lv_act
+        FROM
+          apps.hsm_lmp_coil_51_produce_viw t
+        WHERE
+          trunc(t.DAT_REF_PRO_PRDST) >= p_start_dat
+          AND trunc(t.DAT_REF_PRO_PRDST) < history_record_global.dat_start;
+
+        INSERT INTO
+          LMP.LMP_CAP_DBD_INPUTS (
+            CAP_DBD_INPUT_ID,
+            STATN_BAS_STATION_ID,
+            VAL_MONTH_DBDIN,
+            LKP_TYP_DBDIN,
+            QTY_PLAN_DBDIN,
+            QTY_MIN_DBDIN,
+            QTY_MAX_DBDIN,
+            COD_RUN_DBDIN
+          )
+        VALUES
+          (
+            lmp.lmp_cap_dbd_inputs_seq.nextval,
+            i.statn_bas_station_id,
+            p_month,
+            'TOTAL_STATION',
+            greatest(
+              lv_plan - lv_act - (
+                SELECT
+                  SUM(rv.SUM_WEI) / 1000
+                FROM
+                  apps.hmp_lmp_release_sch_ord_viw RV
+              ),
+              0
             ),
-            0
-          ),
-          0
-        ) INTO LV_CAP_FURNACE
-      FROM
-        lmp.lmp_bas_fix_params fp
-      WHERE
-        fp.lkp_typ_lmpfp = 'FURNACE_STOP'
-        AND TO_CHAR(
-          fp.dat_att_lmpfp,
-          'YYYYMM',
-          'NLS_CALENDAR=PERSIAN'
-        ) = I.VAL_MONTH_DBDIN
-        AND TRUNC(fp.dat_att_lmpfp) > lv_dat_start_smc;
+            greatest(lv_min - lv_act, 0),
+            greatest(lv_max - lv_act, 0),
+            code_run_global_variable
+          );
 
-      SELECT
-        SUM(NVL(bc.qty_capacity_bacap, 0)) INTO LV_CAP_CASTING
-      FROM
-        lmp.lmp_bas_capacities bc
-      WHERE
-        bc.statn_bas_station_id = I.STATN_BAS_STATION_ID
-        AND bc.cod_run_bacap = code_run_global_variable
-        AND bc.dat_day_bacap IN (
-          SELECT
-            c1.Dat_Calde
-          FROM
-            APPS.LMP_aac_calendar_viw c1
-          WHERE
-            c1.v_Dat_Calde_In_6 = I.VAL_MONTH_DBDIN
-            AND c1.DAT_CALDE > lv_dat_start_smc
-        );
+        END IF;
 
-      LV_CAP_AVLBL_TOT := (5 * LV_CAP_CASTING) + LV_CAP_FURNACE;
+        IF i.statn_bas_station_id = 3 THEN lv_plan := nvl(i.qty_plan_lstst, 0);
 
-      FOR D IN (
+        lv_min := nvl(i.qty_min_lstst, 0);
+
+        lv_max := nvl(i.qty_max_lstst, 0);
+
         SELECT
-          V.DAT_CALDE
+          nvl(SUM(t.wei_net_prdst) / 1000, 0) INTO lv_act
         FROM
-          APPS.LMP_AAC_CALENDAR_VIW V
+          apps.ccm_lmp_accept_coil_viw t
         WHERE
-          V.V_DAT_CALDE_IN_6 = I.VAL_MONTH_DBDIN
-          AND V.DAT_CALDE > lv_dat_start_smc
-        ORDER BY
-          1
+          trunc(t.DAT_STK_PRDST) >= p_start_dat
+          AND trunc(t.DAT_STK_PRDST) < history_record_global.dat_start;
+
+        INSERT INTO
+          LMP.LMP_CAP_DBD_INPUTS (
+            CAP_DBD_INPUT_ID,
+            STATN_BAS_STATION_ID,
+            VAL_MONTH_DBDIN,
+            LKP_TYP_DBDIN,
+            QTY_PLAN_DBDIN,
+            QTY_MIN_DBDIN,
+            QTY_MAX_DBDIN,
+            COD_RUN_DBDIN
+          )
+        VALUES
+          (
+            lmp.lmp_cap_dbd_inputs_seq.nextval,
+            i.statn_bas_station_id,
+            p_month,
+            'TOTAL_STATION',
+            greatest(lv_plan - lv_act, 0),
+            greatest(lv_min - lv_act, 0),
+            greatest(lv_max - lv_act, 0),
+            code_run_global_variable
+          );
+
+        ELSE IF i.arstu_ide_pk_arstu LIKE 'M.S.C CO/M.S.C/CCM%' THEN lv_plan := nvl(i.qty_plan_lstst, 0);
+
+        lv_min := nvl(i.qty_min_lstst, 0);
+
+        lv_max := nvl(i.qty_max_lstst, 0);
+
+        SELECT
+          nvl(SUM(t.WEI) / 1000, 0) AS sum_ton INTO lv_act
+        FROM
+          CCM_FOR_MAS_PROD_VIW t
+        WHERE
+          t.AREA_ID = i.area_id
+          AND t.DAT < history_record_global.dat_start;
+
+        INSERT INTO
+          LMP.LMP_CAP_DBD_INPUTS (
+            CAP_DBD_INPUT_ID,
+            STATN_BAS_STATION_ID,
+            VAL_MONTH_DBDIN,
+            LKP_TYP_DBDIN,
+            QTY_PLAN_DBDIN,
+            QTY_MIN_DBDIN,
+            QTY_MAX_DBDIN,
+            COD_RUN_DBDIN
+          )
+        VALUES
+          (
+            lmp.lmp_cap_dbd_inputs_seq.nextval,
+            i.statn_bas_station_id,
+            p_month,
+            'TOTAL_STATION',
+            greatest(lv_plan - lv_act, 0),
+            greatest(lv_min - lv_act, 0),
+            greatest(lv_max - lv_act, 0),
+            code_run_global_variable
+          );
+
+        END IF;
+
+        END IF;
+
+      END LOOP;
+    
+  end;
+
+  procedure fill_total_station_ccm_prc(
+    p_month in VARCHAR2,
+    )is
+    lv_plan        NUMBER;
+    lv_max         NUMBER;
+    lv_min         NUMBER;
+    lv_act         NUMBER;
+    lv_targ        NUMBER;
+    begin
+      
+      FOR i IN (
+        SELECT
+          st.bas_station_id,
+          pa.area_id
+        FROM
+          lmp.lmp_bas_stations st,
+          pms_areas pa
+        WHERE
+          pa.area_id = st.area_area_id
+          AND pa.arstu_ide_pk_arstu LIKE 'M.S.C CO/M.S.C/CCM%'
       )
       LOOP
-      SELECT
-        (8 * 24) - (
+
+        FOR og IN (
           SELECT
-            (
-              nvl(
-                SUM(
-                  nvl(fp.val_att7_lmpfp, 0) + nvl(fp.val_att8_lmpfp, 0)
-                ),
-                0
-              )
-            )
+            fp.val_att4_lmpfp AS cod_og
           FROM
             lmp.lmp_bas_fix_params fp
           WHERE
-            fp.lkp_typ_lmpfp = 'FURNACE_STOP'
-            AND trunc(fp.dat_att_lmpfp) = trunc(v.DAT_CALDE)
-        ) INTO LV_CAP_FURNACE
-      FROM
-        apps.lmp_aac_calendar_viw v
-      WHERE
-        trunc(v.DAT_CALDE) = TRUNC(D.DAT_CALDE);
-
-      SELECT
-        SUM(NVL(bc.qty_capacity_bacap, 0)) INTO LV_CAP_CASTING
-      FROM
-        lmp.lmp_bas_capacities bc
-      WHERE
-        bc.statn_bas_station_id = I.STATN_BAS_STATION_ID
-        AND bc.cod_run_bacap = code_run_global_variable
-        AND TRUNC(bc.dat_day_bacap) = TRUNC(D.DAT_CALDE);
-
-      LV_FACTOR := ((5 * LV_CAP_CASTING) + LV_CAP_FURNACE) / LV_CAP_AVLBL_TOT;
-
-      INSERT INTO
-        lmp.lmp_cap_dbd_inputs (
-          cap_dbd_input_id,
-          statn_bas_station_id,
-          dat_day_dbdin,
-          qty_plan_dbdin,
-          qty_max_dbdin,
-          lkp_typ_dbdin,
-          cod_run_dbdin
+            fp.lkp_typ_lmpfp = 'DAY_BY_DAY'
+            AND fp.val_att1_lmpfp = i.bas_station_id
         )
-      VALUES
-        (
-          lmp.lmp_cap_dbd_inputs_seq.nextval,
-          I.STATN_BAS_STATION_ID,
-          D.DAT_CALDE,
-          ROUND(
-            (
-              ROUND(((i.qty_plan_dbdin * LV_FACTOR) / 50), 0) * 50
-            ),
-            0
-          ),
-          ROUND(
-            (
-              ROUND(((i.qty_plan_dbdin * LV_FACTOR) / 50), 0) * 50
-            ) * 1.05,
-            0
-          ),
-          'TOTAL_STATION_DAY',
-          code_run_global_variable
-        );
-
-      END
-      LOOP
-      ;
-
-      END
-      LOOP
-      ;
-
-      FOR i IN (
-        SELECT
-          t.statn_bas_station_id,
-          t.val_month_dbdin,
-          t.qty_plan_dbdin,
-          t.qty_max_dbdin,
-          t.qty_min_dbdin
-        FROM
-          lmp.lmp_cap_dbd_inputs t
-        WHERE
-          t.lkp_typ_dbdin = 'TOTAL_STATION'
-          AND t.cod_run_dbdin = code_run_global_variable
-          AND t.statn_bas_station_id IN (45) 
-          AND (
-            t.qty_plan_dbdin > 0
-            OR t.qty_max_dbdin > 0
-            OR t.qty_min_dbdin > 0
-          )
-      )
-      LOOP
-      SELECT
-        SUM(bc.qty_capacity_bacap) INTO lv_tot_cap
-      FROM
-        lmp.lmp_bas_capacities bc
-      WHERE
-        bc.statn_bas_station_id = i.statn_bas_station_id
-        AND bc.cod_run_bacap = code_run_global_variable
-        AND bc.dat_day_bacap IN (
+        LOOP
           SELECT
-            c1.Dat_Calde
+            SUM(dd.qty_prod_plan_dayby) INTO lv_plan
           FROM
-            aac_lmp_calendar_viw c1
+            lmp.lmp_bas_day_by_days dd
           WHERE
-            c1.v_Dat_Calde_In_6 = i.val_month_dbdin
-        );
+            dd.statn_bas_station_id = i.bas_station_id
+            AND dd.cod_ord_grp_dayby = og.cod_og
+            AND to_char(dd.dat_day_dayby, 'YYYYMM') = p_month;
 
-      IF lv_tot_cap <= 0 THEN CONTINUE;
-
-      END IF;
-
-      lv_round_base := 1;
-
-      INSERT INTO
-        lmp.lmp_cap_dbd_inputs (
-          cap_dbd_input_id,
-          statn_bas_station_id,
-          dat_day_dbdin,
-          qty_plan_dbdin,
-          qty_max_dbdin,
-          lkp_typ_dbdin,
-          cod_run_dbdin
-        )
-      SELECT
-        lmp.lmp_cap_dbd_inputs_seq.nextval,
-        bc1.statn_bas_station_id,
-        bc1.dat_day_bacap,
-        round(
-          (
-            (bc1.qty_capacity_bacap / lv_tot_cap) * i.qty_plan_dbdin
-          ) / lv_round_base
-        ) * lv_round_base,
-        round(
-          (
-            (bc1.qty_capacity_bacap / lv_tot_cap) * i.qty_max_dbdin * 1.05
-          ) / lv_round_base
-        ) * lv_round_base,
-        'TOTAL_STATION_DAY',
-        code_run_global_variable
-      FROM
-        lmp.lmp_bas_capacities bc1
-      WHERE
-        bc1.statn_bas_station_id = i.statn_bas_station_id
-        AND bc1.cod_run_bacap = code_run_global_variable
-        AND bc1.dat_day_bacap IN (
-          SELECT
-            c1.Dat_Calde
-          FROM
-            aac_lmp_calendar_viw c1
-          WHERE
-            c1.v_Dat_Calde_In_6 = i.val_month_dbdin
-        );
-
-      END
-      LOOP
-      ;
-
-      FOR i IN (
-        SELECT
-          t.statn_bas_station_id,
-          t.val_month_dbdin,
-          t.qty_plan_dbdin,
-          t.qty_max_dbdin,
-          t.qty_min_dbdin
-        FROM
-          lmp.lmp_cap_dbd_inputs t
-        WHERE
-          t.lkp_typ_dbdin = 'TOTAL_STATION'
-          AND t.cod_run_dbdin = code_run_global_variable
-          AND t.statn_bas_station_id IN (
+          BEGIN
             SELECT
-              st.bas_station_id
+              ts.qty_plan_lstst,
+              ts.qty_max_lstst,
+              ts.qty_min_lstst INTO lv_targ,
+              lv_max,
+              lv_min
             FROM
-              lmp.lmp_bas_stations st,
-              pms.pms_areas pa
+              lmp.lmp_sop_target_stations ts
             WHERE
-              pa.area_id = st.area_area_id
-              AND (
-                pa.arstu_ide_pk_arstu LIKE 'M.S.C CO/M.S.C/CCM%'
+              ts.cod_run_cap_lstst = '0'
+              AND ts.lkp_type_lstst = 'CAP_TARGET_OG'
+              AND ts.statn_bas_station_id = i.bas_station_id
+              AND ts.val_month_lstst = p_month
+              AND ts.cod_order_group_lstst = og.COD_OG;
+
+          EXCEPTION
+            WHEN OTHERS THEN lv_max := NULL;
+
+          lv_min := NULL;
+
+          lv_targ := NULL;
+
+          END;
+
+          lv_targ := nvl(lv_targ, lv_plan);
+
+          SELECT
+            (SUM(t.WEI) / 1000) INTO lv_act
+          FROM
+            CCM_FOR_MAS_PROD_VIW t
+          WHERE
+            t.DAT < history_record_global.dat_start
+            AND t.AREA_ID = i.area_id
+            AND lmp_ret_ord_group_for_ord_fun(
+              p_cod_order = > t.ORDIT_ORDHE_COD_ORD_ORDHE || lpad(
+                t.ORDIT_NUM_ITEM_ORDIT,
+                3,
+                '0'
               )
-          )
-          AND (
-            t.qty_plan_dbdin > 0
-            OR t.qty_max_dbdin > 0
-            OR t.qty_min_dbdin > 0
-          )
+            ) = og.cod_og;
+
+          INSERT INTO
+            LMP.LMP_CAP_DBD_INPUTS (
+              CAP_DBD_INPUT_ID,
+              STATN_BAS_STATION_ID,
+              VAL_MONTH_DBDIN,
+              LKP_TYP_DBDIN,
+              QTY_PLAN_DBDIN,
+              COD_RUN_DBDIN,
+              COD_ORDER_GROUP_DBDIN,
+              QTY_max_DBDIN,
+              QTY_min_DBDIN
+            )
+          VALUES
+            (
+              lmp.lmp_cap_dbd_inputs_seq.nextval,
+              i.bas_station_id,
+              p_month,
+              'TOTAL_STATION_OG',
+              greatest(lv_targ - nvl(lv_act, 0), 0),
+              code_run_global_variable,
+              og.cod_og,
+              greatest(lv_max - nvl(lv_act, 0), 0),
+              greatest(lv_min - nvl(lv_act, 0), 0)
+            );
+
+        END LOOP;
+
+      END LOOP;
+    
+  end;
+
+  procedure fill_total_station_og_prc(
+    p_month in VARCHAR2,
+    p_start_dat in DATE
+    )is
+    lv_plan        NUMBER;
+    lv_max         NUMBER;
+    lv_min         NUMBER;
+    lv_act         NUMBER;
+    lv_targ        NUMBER;
+    lv_released    NUMBER;
+    begin
+      FOR og IN (
+      SELECT
+        fp.val_att4_lmpfp AS cod_og
+      FROM
+        lmp.lmp_bas_fix_params fp
+      WHERE
+        fp.lkp_typ_lmpfp = 'DAY_BY_DAY'
+        AND fp.val_att1_lmpfp = 45
+        AND fp.val_att4_lmpfp NOT IN ('01')
       )
       LOOP
-      SELECT
-        SUM(bc.qty_capacity_bacap) INTO lv_tot_cap
-      FROM
-        lmp.lmp_bas_capacities bc
-      WHERE
-        bc.statn_bas_station_id = i.statn_bas_station_id
-        AND bc.cod_run_bacap = code_run_global_variable
-        AND bc.dat_day_bacap IN (
+        SELECT
+          SUM(dd.qty_prod_plan_dayby) INTO lv_plan
+        FROM
+          lmp.lmp_bas_day_by_days dd
+        WHERE
+          dd.statn_bas_station_id = 45
+          AND dd.cod_ord_grp_dayby = og.cod_og
+          AND to_char(dd.dat_day_dayby, 'YYYYMM') = p_month;
+
+        BEGIN
           SELECT
-            c1.Dat_Calde
+            ts.qty_plan_lstst,
+            ts.qty_max_lstst,
+            ts.qty_min_lstst INTO lv_targ,
+            lv_max,
+            lv_min
           FROM
-            aac_lmp_calendar_viw c1
+            lmp.lmp_sop_target_stations ts
           WHERE
-            c1.v_Dat_Calde_In_6 = i.val_month_dbdin
-        );
+            ts.cod_run_cap_lstst = '0'
+            AND ts.lkp_type_lstst = 'CAP_TARGET_OG'
+            AND ts.statn_bas_station_id = 45
+            AND ts.val_month_lstst = p_month
+            AND ts.cod_order_group_lstst = og.COD_OG;
 
-      IF lv_tot_cap <= 0 THEN CONTINUE;
+        EXCEPTION
+          WHEN OTHERS THEN lv_max := NULL;
 
-      END IF;
+        lv_min := NULL;
 
-      SELECT
-        nvl(st.qty_prod_cost_statn, 100) INTO lv_round_base
-      FROM
-        lmp.lmp_bas_stations st
-      WHERE
-        st.bas_station_id = i.statn_bas_station_id;
+        lv_targ := NULL;
 
-      lv_round_base := 1;
+        END;
 
-      INSERT INTO
-        lmp.lmp_cap_dbd_inputs (
-          cap_dbd_input_id,
-          statn_bas_station_id,
-          dat_day_dbdin,
-          qty_plan_dbdin,
-          qty_max_dbdin,
-          lkp_typ_dbdin,
-          cod_run_dbdin
-        )
-      SELECT
-        lmp.lmp_cap_dbd_inputs_seq.nextval,
-        bc1.statn_bas_station_id,
-        bc1.dat_day_bacap,
-        round(
+        SELECT
+          nvl(SUM(tt.wei_actl_prdst) / 1000, 0) INTO lv_act
+        FROM
+          apps.hsm_lmp_coil_51_produce_viw tt
+        WHERE
+          trunc(tt.DAT_REF_PRO_PRDST) >= p_start_dat
+          AND trunc(tt.DAT_REF_PRO_PRDST) < history_record_global.dat_start
+          AND tt.COD_ORD_GRP_PRDST = og.cod_og;
+
+        lv_targ := nvl(lv_targ, lv_plan);
+
+      
+        --------------------Considering Released Plans in Targets --Hr.Ebrahimi 1399/09/02
+        SELECT
+          nvl(SUM(RV.SUM_WEI), 0) INTO lv_released
+        FROM
+          apps.hmp_lmp_release_sch_ord_viw RV
+        WHERE
+        
+          lmp_ret_ord_group_for_ord_fun(RV.ORDER_CODE) = og.cod_og;
+
+        INSERT INTO
+          LMP.LMP_CAP_DBD_INPUTS (
+            CAP_DBD_INPUT_ID,
+            STATN_BAS_STATION_ID,
+            VAL_MONTH_DBDIN,
+            LKP_TYP_DBDIN,
+            QTY_PLAN_DBDIN,
+            COD_RUN_DBDIN,
+            COD_ORDER_GROUP_DBDIN,
+            QTY_max_DBDIN,
+            QTY_min_DBDIN
+          )
+        VALUES
           (
-            (bc1.qty_capacity_bacap / lv_tot_cap) * i.qty_plan_dbdin
-          ) / lv_round_base
-        ) * lv_round_base,
-        round(
-          (
-            (bc1.qty_capacity_bacap / lv_tot_cap) * i.qty_max_dbdin * 1.05
-          ) / lv_round_base
-        ) * lv_round_base,
-        'TOTAL_STATION_DAY',
-        code_run_global_variable
-      FROM
-        lmp.lmp_bas_capacities bc1
-      WHERE
-        bc1.statn_bas_station_id = i.statn_bas_station_id
-        AND bc1.cod_run_bacap = code_run_global_variable
-        AND bc1.dat_day_bacap IN (
-          SELECT
-            c1.Dat_Calde
-          FROM
-            aac_lmp_calendar_viw c1
-          WHERE
-            c1.v_Dat_Calde_In_6 = i.val_month_dbdin
-        );
+            lmp.lmp_cap_dbd_inputs_seq.nextval,
+            45,
+            p_month,
+            'TOTAL_STATION_OG',
+            greatest(
+              lv_targ - nvl(lv_act, 0) - nvl(lv_released / 1000, 0),
+              0
+            ),
+            code_run_global_variable,
+            og.cod_og,
+            greatest(lv_max - nvl(lv_act, 0), 0),
+            greatest(lv_min - nvl(lv_act, 0), 0)
+          );
 
-      END
+      END LOOP;
+    
+  end;
+
+  procedure fill_total_station_casting_prc(
+    p_month in VARCHAR2
+    )is
+    lv_max         NUMBER;
+    lv_min         NUMBER;
+    lv_act         NUMBER;
+    lv_targ        NUMBER;
+    begin
+      FOR i IN (
+        SELECT
+          st.bas_station_id,
+          pa.area_id
+        FROM
+          lmp.lmp_bas_stations st,
+          pms_areas pa
+        WHERE
+          pa.area_id = st.area_area_id
+          AND st.bas_station_id = 41
+      )
       LOOP
-      ;
+        FOR og IN (
+          SELECT
+            fp.val_att4_lmpfp AS cod_og
+          FROM
+            lmp.lmp_bas_fix_params fp
+          WHERE
+            fp.lkp_typ_lmpfp = 'DAY_BY_DAY'
+            AND fp.val_att1_lmpfp = i.bas_station_id
+        )
+        LOOP
+          BEGIN
+            SELECT
+              ts.qty_plan_lstst,
+              ts.qty_max_lstst,
+              ts.qty_min_lstst INTO lv_targ,
+              lv_max,
+              lv_min
+            FROM
+              lmp.lmp_sop_target_stations ts
+            WHERE
+              ts.cod_run_cap_lstst = '0'
+              AND ts.lkp_type_lstst = 'CAP_TARGET_OG'
+              AND ts.statn_bas_station_id = i.bas_station_id
+              AND ts.val_month_lstst = p_month
+              AND ts.cod_order_group_lstst = og.COD_OG;
 
-      UPDATE
-        lmp_bas_model_run_stats m
-      SET
-        m.dat_end_mosta = SYSDATE,
-        m.sta_step_mosta = 'پايان موفق'
-      WHERE
-        m.cod_run_mosta = code_run_global_variable
-        AND m.num_step_mosta = 1
-        AND m.num_module_mosta = history_record_global.module;
+          EXCEPTION
+            WHEN OTHERS THEN lv_max := NULL;
 
-      update_model_stat_step_prc(
-        p_num_step => 1,
-        P_NUM_MODULE => history_record_global.module,
-        p_flg_stat => 1
-      );
+          lv_min := NULL;
 
-      COMMIT;
-      */
-  END;
+          lv_targ := NULL;
 
-  PROCEDURE run_model_manual_prc(
-    p_flg_run_service IN NUMBER) IS
-    /* declare local variables*/ 
-    lv_connection_server VARCHAR2(30);
-    lv_string VARCHAR2(1000);
-    lv_num NUMBER := 1;
-    lv_msg VARCHAR2(1000);
+          END;
 
+          IF nvl(lv_max, 0) + nvl(lv_targ, 0) + nvl(lv_min, 0) = 0 THEN CONTINUE;
+
+          END IF;
+
+          SELECT
+            round(SUM(tt.WEI_ACTL_PRDST) / 1000) INTO lv_act
+          FROM
+            apps.pms_for_smp_slab_prod_viw tt
+          WHERE
+            lmp_ret_ord_group_for_ord_fun(tt.numorder) = og.cod_og;
+
+          INSERT INTO
+            LMP.LMP_CAP_DBD_INPUTS (
+              CAP_DBD_INPUT_ID,
+              STATN_BAS_STATION_ID,
+              VAL_MONTH_DBDIN,
+              LKP_TYP_DBDIN,
+              QTY_PLAN_DBDIN,
+              COD_RUN_DBDIN,
+              COD_ORDER_GROUP_DBDIN,
+              QTY_max_DBDIN,
+              QTY_min_DBDIN
+            )
+          VALUES
+            (
+              lmp.lmp_cap_dbd_inputs_seq.nextval,
+              i.bas_station_id,
+              p_month,
+              'TOTAL_STATION_OG',
+              greatest(lv_targ - (nvl(lv_act, 0)), 0),
+              code_run_global_variable,
+              og.cod_og,
+              greatest(lv_max - (nvl(lv_act, 0)), 0),
+              greatest(lv_min - (nvl(lv_act, 0)), 0)
+            );
+
+        END LOOP;
+
+      END LOOP;
+    
+  end;
+
+  PROCEDURE cal_target_month_prc
+  IS
+    lv_month       VARCHAR2(6);
+    lv_start_dat   DATE;
+    lv_plan        NUMBER;
+    lv_max         NUMBER;
+    lv_min         NUMBER;
+    lv_act         NUMBER;
+    lv_plan_sch    NUMBER;
+    lv_num_seq     NUMBER;
+    lv_targ        NUMBER;
+    lv_released    NUMBER;
     BEGIN
-      FILL_LMP_BAS_RUN_HISTORIES (
-        trunc(SYSDATE),
-        trunc(SYSDATE + 29 + 30),
-        'Scheduled ' || to_char(SYSDATE, 'YYYY-MM-DD hh:mi:ss')
-      );
 
-      create_model_data_prc();
+      lv_month := to_char(history_record_global.dat_start, 'YYYYMM');
+      lv_start_dat := calc_dat_start_fun (lv_month);
+    
+      lv_num_seq := app_lmp_params_pkg.update_str_date_smp_rep_fun( lv_start_dat);
+      lv_num_seq := app_lmp_params_pkg.update_end_date_smp_rep_fun( trunc(SYSDATE));
 
-      /*
-      -----
-      DELETE FROM
-      LMP.LMP_CAP_DBD_INPUTS t
-      WHERE
-      t.lkp_typ_dbdin = 'FIX_TON_DAY'
-      AND cod_run_dbdin = lv_cod_run
-      AND t.statn_bas_station_id IS NULL;
+      App_Pms_For_Mas_Pkg.set_param_for_mas_viw_prc(lv_start_dat, trunc(SYSDATE), NULL, 1);
+      apps.APP_PMS_FOR_SMP_PKG.Set_Date_Prc(lv_start_dat, trunc(SYSDATE));
+
+      fill_total_station_prc(lv_month, lv_start_dat);
+
+      --محاسبه گروه سفارش براي خطوط سرد
+      fill_total_station_ccm_prc( lv_month);
+
+      --51 for og
+      fill_total_station_og_prc(lv_month, lv_start_dat);
       
-      --lv_cod_run:='CAP1397061401';
-      COMMIT;
-      
-      --call webservice
-      IF nvl(p_flg_run_service, 0) = 1 THEN BEGIN
-      lv_msg := Fnd.Fnd_Sms_And_Email_Pkg.Send_Non_Adv_Sms_Fun(
-      sys.odciVarchar2List('09131657097'),
-      p_Messagebodies => 'DONE' || ' : ' || to_char(SYSDATE, 'MM/DD HH24:MI')
-      );
-      
-      EXCEPTION
-      WHEN OTHERS THEN NULL;
-      
-      END;
-      
-      --Dbms_lock.sleep(60);
-      SELECT
-      NAME INTO lv_connection_server
-      FROM
-      v$database;
-      
-      lv_num := APP_LMP_CAP_TOT_MODEL_PKG.run_cap_model_fun(
-      p_cod_run => lv_cod_run,
-      p_connection_server => lv_connection_server,
-      p_identifierName => '1'
-      );
-      
-      END IF;
-      
-      COMMIT;
-      */
+      --محاسبه گروه سفارش براي ريخته گري
+      fill_total_station_casting_prc(lv_month);
+
   END;
 
-  
+  PROCEDURE create_model_data_prc
+    IS
+    lv_month_cur VARCHAR2(6);
+    lv_month_next VARCHAR2(6);
+    lv_tot_cap NUMBER;
+    LV_COUNT NUMBER;
+    LV_CAP_AVLBL_TOT NUMBER;
+    LV_CAP_FURNACE NUMBER;
+    LV_CAP_CASTING NUMBER;
+    LV_FACTOR NUMBER;
+    lv_dat_start_smc DATE;
+    lv_round_base NUMBER;
+    BEGIN
+      
+      -- parameters:  p_num_step , P_NUM_MODULE, p_flg_stat
+      update_model_stat_step_prc(1, history_record_global.module,0);
 
+      fill_bas_model_run_stats_prc(history_record_global.module);
+      -- set---> des_status_rnhis = 'RUNNING STEP 1'
+      update_run_histories_prc(history_record_global.module);
 
+      fill_sop_og_periods_prc(history_record_global);
 
+      fill_lmp_bas_camp_plans_prc(history_record_global.dat_start, history_record_global.dat_end);
+
+      fill_lmp_bas_parameters_prc(history_record_global.module);
+
+      fill_lmp_bas_orders_prc();
+
+      fill_lmp_bas_constraints_prc(history_record_global);
+
+      cal_aas_data_viw_prc ();
+
+      calculate_capacity_prc();
+
+      COMMIT;
+
+      cal_target_month_prc();
+  -- todo temp3 gooes here
+
+  END;
+
+PROCEDURE run_model_manual_prc(
+  p_flg_run_service IN NUMBER) IS
+  /* declare local variables*/ 
+  lv_connection_server VARCHAR2(30);
+  lv_string VARCHAR2(1000);
+  lv_num NUMBER := 1;
+  lv_msg VARCHAR2(1000);
+
+  BEGIN
+    FILL_BAS_RUN_HISTORIES_PRC (
+      trunc(SYSDATE),
+      trunc(SYSDATE + 29 + 30),
+      'Scheduled ' || to_char(SYSDATE, 'YYYY-MM-DD hh:mi:ss')
+    );
+
+    create_model_data_prc();
+-- todo conticnue this procedure
+    /*
+    -----
+    DELETE FROM
+    LMP.LMP_CAP_DBD_INPUTS t
+    WHERE
+    t.lkp_typ_dbdin = 'FIX_TON_DAY'
+    AND cod_run_dbdin = lv_cod_run
+    AND t.statn_bas_station_id IS NULL;
+    
+    --lv_cod_run:='CAP1397061401';
+    COMMIT;
+    
+    --call webservice
+    IF nvl(p_flg_run_service, 0) = 1 THEN BEGIN
+    lv_msg := Fnd.Fnd_Sms_And_Email_Pkg.Send_Non_Adv_Sms_Fun(
+    sys.odciVarchar2List('09131657097'),
+    p_Messagebodies => 'DONE' || ' : ' || to_char(SYSDATE, 'MM/DD HH24:MI')
+    );
+    
+    EXCEPTION
+    WHEN OTHERS THEN NULL;
+    
+    END;
+    
+    --Dbms_lock.sleep(60);
+    SELECT
+    NAME INTO lv_connection_server
+    FROM
+    v$database;
+    
+    lv_num := APP_LMP_CAP_TOT_MODEL_PKG.run_cap_model_fun(
+    p_cod_run => lv_cod_run,
+    p_connection_server => lv_connection_server,
+    p_identifierName => '1'
+    );
+    
+    END IF;
+    
+    COMMIT;
+    */
+END;
 
 -------------------------!--------------------!--------------------------------------------------
 -------------------------!INITIALIZATION LOGIC!--------------------------------------------------
