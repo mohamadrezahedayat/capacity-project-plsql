@@ -1,12 +1,6 @@
--------------------------!-------------------!---------------------------------------------------
--------------------------!-------------------!---------------------------------------------------
--------------------------!---Package Body ---!---------------------------------------------------
--------------------------!-------------------!---------------------------------------------------
--------------------------!-------------------!---------------------------------------------------
+
 CREATE
 OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS 
-  
-  type date_calde_cursor_type is ref cursor return aac_lmp_calendar_viw.Dat_Calde%type;
   
   PROCEDURE fill_released_sch_prc
     IS 
@@ -47,7 +41,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
           );
       END LOOP;
 
-  end;
+  END;
 
   PROCEDURE ins_last_release_plan_to_param
     IS
@@ -91,7 +85,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
   PROCEDURE fill_actual_data_prc
     is
     lv_act_month NUMBER;
-    lv_dat_end_act DATE;
+    lv_dat_END_act DATE;
     lv_current_month VARCHAR2(6);
     begin
       
@@ -106,13 +100,13 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
         WHEN OTHERS THEN NULL;
       END;
 
-    lv_dat_end_act := TRUNC(SYSDATE);
-    lv_current_month := to_char(SYSDATE, 'YYYYMM', 'nls_calendar=persian');
+    lv_dat_END_act := TRUNC(SYSDATE);
+    lv_current_month := to_char(SYSDATE, 'YYYYMM', 'nls_calENDar=persian');
 
     ---set data hsm
     App_Pms_For_Mas_Pkg.set_param_for_mas_viw_prc(
-      lv_dat_end_act - 1,
-      lv_dat_end_act + 1,
+      lv_dat_END_act - 1,
+      lv_dat_END_act + 1,
       NULL,
       1
     );
@@ -136,8 +130,8 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
         FROM
           apps.hsm_lmp_coil_51_produce_viw t1
         WHERE
-          trunc(t1.DAT_REF_PRO_PRDST) >= lv_dat_end_act
-          AND trunc(t1.DAT_REF_PRO_PRDST) < lv_dat_end_act + 1
+          trunc(t1.DAT_REF_PRO_PRDST) >= lv_dat_END_act
+          AND trunc(t1.DAT_REF_PRO_PRDST) < lv_dat_END_act + 1
           AND t1.COD_ORD_GRP_PRDST = j.cod_og;
 
       EXCEPTION
@@ -165,13 +159,13 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
             j.cod_og,
             lv_current_month,
             lv_act_month,
-            lv_dat_end_act
+            lv_dat_END_act
           );
 
       END IF;
 
     END LOOP;
-  end;
+  END;
 
   PROCEDURE cal_aas_data_viw_prc
     IS 
@@ -264,10 +258,10 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
                 C .V_DAT_CALDE_IN_8,
                 C .DAT_CALDE
               FROM
-                apps.lmp_aac_calendar_viw C
+                apps.lmp_aac_calENDar_viw C
               WHERE
                 C .DAT_CALDE BETWEEN p_history_record.dat_start
-                AND p_history_record.dat_end
+                AND p_history_record.dat_END
             ) cal
           WHERE
             T.FLG_ACTIVE_CAP_CNSTR = 1
@@ -422,7 +416,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
 
   PROCEDURE fill_lmp_bas_camp_plans_prc(
     p_date_start in DATE,
-    p_date_end in DATE)IS
+    p_date_END in DATE)IS
     BEGIN
       INSERT INTO
         lmp_bas_camp_plans (
@@ -445,7 +439,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
       WHERE
         p.cod_run_cmppl = '0'
         AND p.dat_day_cmppl BETWEEN p_date_start
-        AND p_date_end;
+        AND p_date_END;
   END;
 
   PROCEDURE update_run_histories_prc(
@@ -524,13 +518,13 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
             og.qty_max_daily_orgrp
           FROM
             lmp_sop_order_groups og,
-            aac_lmp_calendar_viw C,
+            aac_lmp_calENDar_viw C,
             lmp_sop_order_group_types ogt
           WHERE
             ogt.sop_order_group_type_id = og.ogtyp_sop_order_group_type_id
             AND ogt.typ_group_type_ogtyp = 1
             AND C .Dat_Calde BETWEEN p_history_record.dat_start
-            AND p_history_record.dat_end
+            AND p_history_record.dat_END
         ) ogtt,
         (
           SELECT
@@ -542,7 +536,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
             lmp_sop_og_periods ogp
           WHERE
             ogp.dat_day_ogprd BETWEEN p_history_record.dat_start
-            AND p_history_record.dat_end
+            AND p_history_record.dat_END
             AND ogp.cod_run_ogprd = '0'
             AND ogp.num_module_ogprd = 3
         ) ogpt
@@ -591,7 +585,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
           UPDATE
             lmp_bas_model_run_stats s1
           SET
-            s1.dat_end_mosta = SYSDATE,
+            s1.dat_END_mosta = SYSDATE,
             s1.sta_step_mosta = lv_msg2
           WHERE
           s1.cod_run_mosta = code_run_tot_global_variable
@@ -628,74 +622,6 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
       END IF;
   END;
 
-  PROCEDURE FILL_BAS_RUN_HISTORIES_PRC (
-    p_date_start IN DATE,
-    P_date_end IN DATE,
-    p_description IN VARCHAR2
-    ) IS
-    lv_last_plan_dat DATE;
-    lv_MAS_RUN_ID NUMBER;
-    BEGIN
-      SELECT
-        MAX(cc.Dat_Calde) INTO lv_last_plan_dat
-      FROM
-        aac_lmp_calendar_viw cc
-      WHERE
-        cc.v_Dat_Calde_In_6 = (
-          SELECT
-            C .v_Dat_Calde_In_6
-          FROM
-            aac_lmp_calendar_viw C
-          WHERE
-            C .Dat_Calde = trunc(p_date_start)
-        );
-
-      SELECT
-        MAX(t.Msch_Run_History_Id) AS Msch_Run_History_Id
-      INTO
-        lv_MAS_RUN_ID
-      FROM
-        mas.Mas_Msch_Run_Histories t
-      WHERE
-        Nvl(t.Num_Module_Mrhis, 1) = 20
-        AND t.lkp_sta_model_mrhis = 'SUCCESSFUL';
-
-      INSERT INTO
-        LMP_BAS_RUN_HISTORIES (
-          BAS_RUN_HISTORY_ID,
-          COD_RUN_RNHIS,
-          DAT_RUN_RNHIS,
-          NUM_MODULE_RNHIS,
-          STA_RUN_RNHIS,
-          DAT_STRT_HRZN_RNHIS,
-          DAT_END_HRZN_RNHIS,
-          VAL_RUN_RNHIS,
-          DES_DESCRIPTION_RNHIS,
-          LKP_GROUP_RNHIS,
-          FLG_IN_RUN_RNHIS,
-          DAT_LAST_PLAN_RNHIS,
-          mrhis_msch_run_history_id
-        )
-      VALUES
-        (
-          LMP_BAS_RUN_HISTORIES_SEQ.NEXTVAL,
-          code_run_global_variable,
-          SYSDATE,
-          3,
-          0,
-          p_date_START,
-          p_date_END,
-          TO_CHAR(SYSDATE, 'YYYYMMDD'),
-          p_description,
-          'LMP',
-          1,
-          lv_last_plan_dat,
-          lv_MAS_RUN_ID
-        );
-
-      COMMIT;
-  END;
-
   FUNCTION calculate_cap_heat_temp_fun(
     p_dat_calde   in date,
     p_num_furnace in lmp.lmp_bas_fix_params.val_att1_lmpfp%type,
@@ -703,25 +629,28 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
     p_iu          in lmp.lmp_bas_fix_params.val_att7_lmpfp%type
     ) return number IS
     lv_stop number;
+    lv_cap_heat_temp number;
     
     begin
-      SELECT
-        nvl(SUM(nvl(fp.val_att7_lmpfp, 0) + nvl(fp.val_att8_lmpfp, 0)), 0) 
-      INTO lv_stop
-      FROM
-        lmp.lmp_bas_fix_params fp
-      WHERE
-        fp.lkp_typ_lmpfp = 'FURNACE_STOP'
-        AND fp.val_att1_lmpfp = p_num_furnace
-        AND fp.dat_att_lmpfp = p_dat_calde;
+      begin
+        SELECT
+          nvl(SUM(nvl(fp.val_att7_lmpfp, 0) + nvl(fp.val_att8_lmpfp, 0)), 0) 
+        INTO lv_stop
+        FROM
+          lmp.lmp_bas_fix_params fp
+        WHERE
+          fp.lkp_typ_lmpfp = 'FURNACE_STOP'
+          AND fp.val_att1_lmpfp = p_num_furnace
+          AND fp.dat_att_lmpfp = p_dat_calde;
 
-      EXCEPTION
-        WHEN no_data_found THEN lv_stop := 0;
-      END;
+        EXCEPTION
+          WHEN no_data_found THEN lv_stop := 0;
+        END;
 
-      return (24 - lv_stop) * i.p_iu * i.p_pdw;
+      lv_cap_heat_temp := (24 - lv_stop) * p_iu * p_pdw;
+      return lv_cap_heat_temp;
       
-  end;
+  END;
 
   PROCEDURE insert_cap_heat_temp_prc(
     p_cap_heat_temp in number,
@@ -747,7 +676,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
         'تعداد'
       );
     
-  end;
+  END;
 
   PROCEDURE insert_cap_heat_prc(
     p_cap_heat      in number,
@@ -770,12 +699,16 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
           p_cap_heat
         ); 
     
-  end;
+  END;
 
   PROCEDURE calculate_cap_heat_prc(
-    p_dat_calde in date) IS
-    lv_cap_heat := 0;
+    p_dat_calde in date) 
+    IS
+    lv_cap_heat NUMBER:= 0;
     lv_cap_heat_temp NUMBER;
+    lv_num_furnace number;
+    lv_pdw number;
+    lv_iu number;
     begin
 
       -- for selected parameters calculate cap heat 
@@ -790,12 +723,11 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
           t.lkp_typ_lmpfp = 'FURNACE_CAPACITY'
       )
       LOOP
-        BEGIN
           -- calculate capacity heat  of each parameter in a specific date
-          lv_cap_heat_temp := calculate_cap_heat_temp_fun(p_dat_calde, num_furnace, pdw, iu);
+          lv_cap_heat_temp := calculate_cap_heat_temp_fun(p_dat_calde, lv_num_furnace, lv_pdw, lv_iu);
 
           -- insert capacity heat of each parameter in a specific date to lmp.lmp_cap_heat_plans 
-          insert_cap_heat_temp_prc( cap_heat_temp , p_dat_calde, num_furnace);
+          insert_cap_heat_temp_prc( lv_cap_heat_temp , p_dat_calde, lv_num_furnace);
 
           -- calculate capacity sum of heats in a specific date
           lv_cap_heat := lv_cap_heat + lv_cap_heat_temp;
@@ -804,9 +736,9 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
 
       -- insert capacity total heat of all parameters  a specific date to lmp.lmp_bas_capacities
       insert_cap_heat_prc( lv_cap_heat, p_dat_calde);
-  end;
+  END;
 
-  function calculate_lv_cap(
+  FUNCTION calculate_lv_cap(
     p_calde_dat in date) return number is
     lv_cap number:=0;
     begin
@@ -833,7 +765,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
                  SELECT
                   C.Dat_Calde
                 FROM
-                  aac_lmp_calendar_viw C
+                  aac_lmp_calENDar_viw C
                 WHERE
                   C.Dat_Calde = p_calde_dat
               )
@@ -859,18 +791,17 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
 
       END LOOP;
       return lv_cap;
-  end;
+  END;
 
   PROCEDURE insert_lv_cap_prc(
-    p_lv_cap in number,
-    p_dat_calde in date,
+    p_dat_calde in date
     )is
     lv_cap           NUMBER := 0;
     lv_pcn_nc_slab   NUMBER := 0;
     lv_pcn_du_slab   NUMBER := 0;
     lv_dat_start_smc date := apps.api_mas_lmp_pkg.get_max_dat_prog_smc_Fun(apps.api_mas_models_pkg.Get_Last_AAS_Cod_Run_Fun);
     begin
-      lv_cap :=calculate_lv_cap(d.dat_calde);
+      lv_cap :=calculate_lv_cap(p_dat_calde);
 
       IF p_dat_calde > lv_dat_start_smc THEN
         INSERT INTO
@@ -894,9 +825,35 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
           );
 
       END IF;
-  end;
+  END;
 
-  procedure insert_lv_cap_temp_prc(
+  FUNCTION calc_lv_cap_temp_fun(
+    p_dat_calde                in date,
+    p_qty_prod_cap_statn       in number,
+    p_val_prod_modifier_statn  in number,
+    p_qty_maintenace_camai     in number
+    ) return number is
+    lv_cap_temp number := 0;
+    begin
+      IF trunc(p_dat_calde) = trunc(SYSDATE) THEN lv_cap_temp := (
+          greatest(
+            p_qty_prod_cap_statn * ((18.5 - (SYSDATE - trunc(SYSDATE)) * 24) / 24),
+            0
+          ) * p_val_prod_modifier_statn
+        );
+
+      ELSE lv_cap_temp := (
+          greatest(
+            p_qty_prod_cap_statn * (1 - (p_qty_maintenace_camai / 24)),
+            0
+          ) * p_val_prod_modifier_statn
+        );
+
+      END IF;
+    return lv_cap_temp;
+  END;
+
+  PROCEDURE insert_lv_cap_temp_prc(
     p_dat_calde in date
     )is
     lv_cap_temp number;
@@ -926,10 +883,11 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
                   AND pa.arstu_ide_pk_arstu = 'M.S.C CO/M.S.C/SMC/SLAB-CONDITIONING/PULPIT-9'
               ),
               (
+                -- ! can remove????
                 SELECT
                   C.Dat_Calde
                 FROM
-                  aac_lmp_calendar_viw C
+                  aac_lmp_calENDar_viw C
                 WHERE
                   C.Dat_Calde = p_dat_calde
               )
@@ -946,15 +904,16 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
               m.dat_day_camai = p_dat_calde
           ) t2
         WHERE
+        -- ! can remove?
           t1.dat_calde = t2.dat_day_camai(+)
           AND t1.bas_station_id = t2.statn_bas_station_id(+)
       )
       LOOP
         lv_cap_temp := calc_lv_cap_temp_fun( 
           p_dat_calde,
-          t1.qty_prod_cap_statn,
-          t1.val_prod_modifier_statn, 
-          t2.qty_maintenace_camai );
+          t.qty_prod_cap_statn,
+          t.val_prod_modifier_statn, 
+          t.qty_maintenace_camai );
 
         INSERT INTO
           lmp.lmp_bas_capacities (
@@ -974,33 +933,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
           );
 
       END LOOP;
-  end;
-
-  function calc_lv_cap_temp_fun(
-    p_dat_calde                in date,
-    p_qty_prod_cap_statn       in number,
-    p_val_prod_modifier_statn  in number,
-    p_qty_maintenace_camai     in number
-    ) return number is
-    lv_cap_temp number := 0;
-    begin
-      IF trunc(p_dat_calde) = trunc(SYSDATE) THEN lv_cap_temp := (
-          greatest(
-            p_qty_prod_cap_statn * ((18.5 - (SYSDATE - trunc(SYSDATE)) * 24) / 24),
-            0
-          ) * p_val_prod_modifier_statn
-        );
-
-      ELSE lv_cap_temp := (
-          greatest(
-            p_qty_prod_cap_statn * (1 - (p_qty_maintenace_camai / 24)),
-            0
-          ) * p_val_prod_modifier_statn
-        );
-
-      END IF;
-    return lv_cap_temp;
-  end;
+  END;
 
   PROCEDURE insert_lv_cap_temp_hsm_prc(
     p_dat_calde in date
@@ -1043,7 +976,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
                 SELECT
                   C.Dat_Calde
                 FROM
-                  aac_lmp_calendar_viw C
+                  aac_lmp_calENDar_viw C
                 WHERE
                   C.Dat_Calde = p_dat_calde
               )
@@ -1140,7 +1073,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
         END IF;
 
       END LOOP;
-  end;
+  END;
 
   PROCEDURE insert_lv_cap_temp_crm_prc(
     p_dat_calde in date
@@ -1176,7 +1109,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
                 SELECT
                   C.Dat_Calde
                 FROM
-                  aac_lmp_calendar_viw C
+                  aac_lmp_calENDar_viw C
                 WHERE
                   C.Dat_Calde = p_dat_calde
               )
@@ -1223,7 +1156,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
 
       END LOOP;
       
-  end;
+  END;
 
   PROCEDURE insert_lv_cap_temp_2_prc(
     p_dat_calde in date
@@ -1262,7 +1195,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
 
     END LOOP;
       
-  end;
+  END;
 
   PROCEDURE insert_cap_inventory_prc 
     is
@@ -1302,10 +1235,10 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
               SELECT
                 cal.Dat_Calde
               FROM
-                aac_lmp_calendar_viw cal
+                aac_lmp_calENDar_viw cal
               WHERE
                 cal.Dat_Calde BETWEEN history_record_global.dat_start
-                AND history_record_global.dat_end
+                AND history_record_global.dat_END
               ORDER BY
                 cal.Dat_Calde
             )
@@ -1340,7 +1273,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
           END IF;
 
       END LOOP;
-  end;
+  END;
 
   PROCEDURE calculate_capacity_prc
     IS 
@@ -1349,10 +1282,10 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
         SELECT
           C.Dat_Calde
         FROM
-          aac_lmp_calendar_viw C
+          aac_lmp_calENDar_viw C
         WHERE
           C.Dat_Calde BETWEEN history_record_global.dat_start
-          AND history_record_global.dat_end
+          AND history_record_global.dat_END
       )
       LOOP
         -- calculate_cap_heat
@@ -1361,7 +1294,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
         --CCM
         insert_lv_cap_prc(j.dat_calde);
 
-        --Send to HSM
+        --SEND to HSM
         insert_lv_cap_temp_prc(j.dat_calde);
 
         --HSM
@@ -1379,22 +1312,22 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
 
   END;
 
-  function calc_dat_start_fun (
+  FUNCTION calc_dat_start_fun (
     p_month in VARCHAR2) return Date is
     lv_start_dat   DATE;
     begin
       SELECT
-            MIN(C.Dat_Calde)
-          INTO
-            lv_start_dat
-          FROM
-            aac_lmp_calendar_viw C
-          WHERE
-            C.v_Dat_Calde_In_6 = p_month;
-      return lv_start_dat
-  end;
+        MIN(C.Dat_Calde)
+      INTO
+        lv_start_dat
+      FROM
+        aac_lmp_calENDar_viw C
+      WHERE
+        C.v_Dat_Calde_In_6 = p_month;
+      return lv_start_dat;
+  END;
 
-  procedure fill_total_station_prc(
+  PROCEDURE fill_total_station_prc(
     p_month in VARCHAR2,
     p_start_dat in DATE
     )is
@@ -1603,11 +1536,10 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
 
       END LOOP;
     
-  end;
+  END;
 
-  procedure fill_total_station_ccm_prc(
-    p_month in VARCHAR2,
-    )is
+  PROCEDURE fill_total_station_ccm_prc(
+    p_month in VARCHAR2)is
     lv_plan        NUMBER;
     lv_max         NUMBER;
     lv_min         NUMBER;
@@ -1664,11 +1596,10 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
               AND ts.cod_order_group_lstst = og.COD_OG;
 
           EXCEPTION
-            WHEN OTHERS THEN lv_max := NULL;
-
-          lv_min := NULL;
-
-          lv_targ := NULL;
+            WHEN OTHERS THEN 
+            lv_max := NULL;
+            lv_min := NULL;
+            lv_targ := NULL;
 
           END;
 
@@ -1682,7 +1613,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
             t.DAT < history_record_global.dat_start
             AND t.AREA_ID = i.area_id
             AND lmp_ret_ord_group_for_ord_fun(
-              p_cod_order = > t.ORDIT_ORDHE_COD_ORD_ORDHE || lpad(
+              p_cod_order => t.ORDIT_ORDHE_COD_ORD_ORDHE || lpad(
                 t.ORDIT_NUM_ITEM_ORDIT,
                 3,
                 '0'
@@ -1718,9 +1649,9 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
 
       END LOOP;
     
-  end;
+  END;
 
-  procedure fill_total_station_og_prc(
+  PROCEDURE fill_total_station_og_prc(
     p_month in VARCHAR2,
     p_start_dat in DATE
     )is
@@ -1827,9 +1758,9 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
 
       END LOOP;
     
-  end;
+  END;
 
-  procedure fill_total_station_casting_prc(
+  PROCEDURE fill_total_station_casting_prc(
     p_month in VARCHAR2
     )is
     lv_max         NUMBER;
@@ -1924,7 +1855,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
 
       END LOOP;
     
-  end;
+  END;
 
   PROCEDURE cal_target_month_prc
     IS
@@ -1941,10 +1872,10 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
     BEGIN
 
       lv_month := to_char(history_record_global.dat_start, 'YYYYMM');
-      lv_start_dat := calc_dat_start_fun (lv_month);
+      lv_start_dat := calc_dat_start_fun(lv_month);
     
       lv_num_seq := app_lmp_params_pkg.update_str_date_smp_rep_fun( lv_start_dat);
-      lv_num_seq := app_lmp_params_pkg.update_end_date_smp_rep_fun( trunc(SYSDATE));
+      lv_num_seq := app_lmp_params_pkg.update_END_date_smp_rep_fun( trunc(SYSDATE));
 
       App_Pms_For_Mas_Pkg.set_param_for_mas_viw_prc(lv_start_dat, trunc(SYSDATE), NULL, 1);
       apps.APP_PMS_FOR_SMP_PKG.Set_Date_Prc(lv_start_dat, trunc(SYSDATE));
@@ -1998,12 +1929,12 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
         SELECT
           C .Dat_Calde
         FROM
-          aac_lmp_calendar_viw C
+          aac_lmp_calENDar_viw C
         WHERE
           C .Dat_Calde BETWEEN history_record_global.dat_start
-          AND history_record_global.dat_end
+          AND history_record_global.dat_END
       );
-  end;
+  END;
 
   PROCEDURE update_bas_fix_params_prc is
     begin
@@ -2013,11 +1944,11 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
         t.val_att2_lmpfp = t.val_att2_lmpfp * 3
       WHERE
         t.lkp_typ_lmpfp = 'MAX_TON_DAY'
-        AND t.dat_att_lmpfp > history_record_global.dat_end - 10
+        AND t.dat_att_lmpfp > history_record_global.dat_END - 10
         AND t.val_att3_lmpfp = code_run_global_variable;
-  end;
+  END;
 
-  PROCEDURE fill_cap_dbd_inputs_fix_tonday_prc is
+  PROCEDURE fill_cap_dbd_in_fix_tonday_prc is
     begin
       INSERT INTO
         lmp.lmp_cap_dbd_inputs (
@@ -2047,24 +1978,24 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
         CAP_DBD.LKP_TYP_DBDIN = 'FIX_TON_DAY'
         AND CAP_DBD.COD_RUN_DBDIN = '0'
         AND cap_dbd.dat_day_dbdin BETWEEN history_record_global.dat_start
-        AND history_record_global.dat_end;
-  end;
+        AND history_record_global.dat_END;
+  END;
 
-  function calc_month_next_fun return varchar 
+  FUNCTION calc_month_next_fun return varchar 
     is
     lv_month_next VARCHAR2(6);
     begin
       SELECT
         MIN(C .v_Dat_Calde_In_6) INTO lv_month_next
       FROM
-        aac_lmp_calendar_viw C
+        aac_lmp_calENDar_viw C
       WHERE
         C .v_Dat_Calde_In_6 > to_char(SYSDATE, 'YYYYMM');
 
-      retuen lv_month_next;
-  end;
+      return lv_month_next;
+  END;
 
-  procedure fill_CAP_DBD_INP_tot-st_prc(
+  PROCEDURE fill_CAP_DBD_INP_tot_st_prc(
     p_month_next in varchar2
     )is
     begin
@@ -2117,15 +2048,15 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
                 SELECT
                   COUNT(C .Dat_Calde)
                 FROM
-                  aac_lmp_calendar_viw C
+                  aac_lmp_calENDar_viw C
                 WHERE
                   C .v_Dat_Calde_In_6 = p_month_next
-                  AND C .Dat_Calde <= history_record_global.dat_end
+                  AND C .Dat_Calde <= history_record_global.dat_END
               ) / (
                 SELECT
                   COUNT(C .Dat_Calde)
                 FROM
-                  aac_lmp_calendar_viw C
+                  aac_lmp_calENDar_viw C
                 WHERE
                   C .v_Dat_Calde_In_6 = p_month_next
               )
@@ -2138,15 +2069,15 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
                 SELECT
                   COUNT(C .Dat_Calde)
                 FROM
-                  aac_lmp_calendar_viw C
+                  aac_lmp_calENDar_viw C
                 WHERE
                   C .v_Dat_Calde_In_6 = p_month_next
-                  AND C .Dat_Calde <= history_record_global.dat_end
+                  AND C .Dat_Calde <= history_record_global.dat_END
               ) / (
                 SELECT
                   COUNT(C .Dat_Calde)
                 FROM
-                  aac_lmp_calendar_viw C
+                  aac_lmp_calENDar_viw C
                 WHERE
                   C .v_Dat_Calde_In_6 = p_month_next
               )
@@ -2158,15 +2089,15 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
                 SELECT
                   COUNT(C .Dat_Calde)
                 FROM
-                  aac_lmp_calendar_viw C
+                  aac_lmp_calENDar_viw C
                 WHERE
                   C .v_Dat_Calde_In_6 = p_month_next
-                  AND C .Dat_Calde <= history_record_global.dat_end
+                  AND C .Dat_Calde <= history_record_global.dat_END
               ) / (
                 SELECT
                   COUNT(C .Dat_Calde)
                 FROM
-                  aac_lmp_calendar_viw C
+                  aac_lmp_calENDar_viw C
                 WHERE
                   C .v_Dat_Calde_In_6 = p_month_next
               )
@@ -2174,9 +2105,9 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
           );
 
       END LOOP;
-  end;
+  END;
 
-  procedure fill_CAP_DBD_INP_tot-st_og_prc(
+  PROCEDURE fill_CAP_DBD_INP_tot_st_og_prc(
     p_month_next in varchar2
     )is
     begin
@@ -2224,15 +2155,15 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
                 SELECT
                   COUNT(C .Dat_Calde)
                 FROM
-                  aac_lmp_calendar_viw C
+                  aac_lmp_calENDar_viw C
                 WHERE
                   C .v_Dat_Calde_In_6 = p_month_next
-                  AND C .Dat_Calde <= history_record_global.dat_end
+                  AND C .Dat_Calde <= history_record_global.dat_END
               ) / (
                 SELECT
                   COUNT(C .Dat_Calde)
                 FROM
-                  aac_lmp_calendar_viw C
+                  aac_lmp_calENDar_viw C
                 WHERE
                   C .v_Dat_Calde_In_6 = p_month_next
               )
@@ -2244,9 +2175,9 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
           );
 
       END LOOP;
-  end;
+  END;
 
-  procedure fill_CAP_DBD_INP_tot_st_day_1_prc 
+  PROCEDURE fill_CAP_DBD_IN_tot_stday1_prc 
     is
     LV_COUNT NUMBER;
     LV_CAP_AVLBL_TOT NUMBER;
@@ -2256,6 +2187,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
     lv_dat_start_smc DATE;
 
     begin
+        lv_dat_start_smc := apps.api_mas_lmp_pkg.get_max_dat_prog_smc_Fun(apps.api_mas_models_pkg.Get_Last_AAS_Cod_Run_Fun);
       FOR i IN (
         SELECT
           t.statn_bas_station_id,
@@ -2276,8 +2208,8 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
           )
       )
       LOOP
-      --! potential bug ...
-        lv_dat_start_smc := apps.api_mas_lmp_pkg.get_max_dat_prog_smc_Fun(apps.api_mas_models_pkg.Get_Last_AAS_Cod_Run_Fun);
+      --! potential bug ... changed position before loop
+        -- lv_dat_start_smc := apps.api_mas_lmp_pkg.get_max_dat_prog_smc_Fun(apps.api_mas_models_pkg.Get_Last_AAS_Cod_Run_Fun);
 
         SELECT
           COUNT(1) INTO LV_COUNT
@@ -2319,7 +2251,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
             SELECT
               c1.Dat_Calde
             FROM
-              APPS.LMP_aac_calendar_viw c1
+              APPS.LMP_aac_calENDar_viw c1
             WHERE
               c1.v_Dat_Calde_In_6 = I.VAL_MONTH_DBDIN
               AND c1.DAT_CALDE > lv_dat_start_smc
@@ -2358,7 +2290,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
                 AND trunc(fp.dat_att_lmpfp) = trunc(v.DAT_CALDE)
             ) INTO LV_CAP_FURNACE
           FROM
-            apps.lmp_aac_calendar_viw v
+            apps.lmp_aac_calENDar_viw v
           WHERE
             trunc(v.DAT_CALDE) = TRUNC(D.DAT_CALDE);
 
@@ -2407,9 +2339,9 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
         END LOOP;
 
       END LOOP;
-  END
+  END;
 
-  procedure fill_CAP_DBD_INP_tot_st_day_2_prc 
+  PROCEDURE fill_CAP_DBD_IN_tot_stday2_prc 
     is
     lv_tot_cap NUMBER;
     lv_round_base NUMBER;
@@ -2445,7 +2377,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
             SELECT
               c1.Dat_Calde
             FROM
-              aac_lmp_calendar_viw c1
+              aac_lmp_calENDar_viw c1
             WHERE
               c1.v_Dat_Calde_In_6 = i.val_month_dbdin
           );
@@ -2491,15 +2423,15 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
             SELECT
               c1.Dat_Calde
             FROM
-              aac_lmp_calendar_viw c1
+              aac_lmp_calENDar_viw c1
             WHERE
               c1.v_Dat_Calde_In_6 = i.val_month_dbdin
           );
 
       END LOOP;
-  end;
+  END;
 
-  procedure fill_CAP_DBD_INP_tot_st_day_3_prc 
+  PROCEDURE fill_CAP_DBD_IN_tot_stday3_prc 
     is
     lv_tot_cap NUMBER;
     lv_round_base NUMBER;
@@ -2546,7 +2478,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
             SELECT
               c1.Dat_Calde
             FROM
-              aac_lmp_calendar_viw c1
+              aac_lmp_calENDar_viw c1
             WHERE
               c1.v_Dat_Calde_In_6 = i.val_month_dbdin
           );
@@ -2599,28 +2531,28 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
             SELECT
               c1.Dat_Calde
             FROM
-              aac_lmp_calendar_viw c1
+              aac_lmp_calENDar_viw c1
             WHERE
               c1.v_Dat_Calde_In_6 = i.val_month_dbdin
           );
 
       END LOOP;
-  end;
+  END;
 
-  procedure update_succed_final_prc is
+  PROCEDURE update_succed_final_prc is
     begin
       UPDATE
         lmp_bas_model_run_stats m
       SET
-        m.dat_end_mosta = SYSDATE,
+        m.dat_END_mosta = SYSDATE,
         m.sta_step_mosta = 'پايان موفق'
       WHERE
         m.cod_run_mosta = code_run_global_variable
         AND m.num_step_mosta = 1
         AND m.num_module_mosta = history_record_global.module;  
-  end;
+  END;
 
-  procedure fill_cap_dbd_inputs_prc is
+  PROCEDURE fill_cap_dbd_inputs_prc is
     lv_month_next VARCHAR2(6);
     begin
       fill_bas_fix_params_prc();
@@ -2631,30 +2563,30 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
 
       COMMIT;
 
-      fill_cap_dbd_inputs_fix_tonday_prc();
+      fill_cap_dbd_in_fix_tonday_prc();
 
       lv_month_next := calc_month_next_fun();
 
-      fill_CAP_DBD_INP_tot-station_prc(lv_month_next);
+      fill_CAP_DBD_INP_tot_st_prc(lv_month_next);
 
-      fill_CAP_DBD_INP_tot-st_og_prc( lv_month_next);
+      fill_CAP_DBD_INP_tot_st_og_prc( lv_month_next);
 
-      fill_CAP_DBD_INP_tot_st_day_1_prc();
+      fill_CAP_DBD_IN_tot_stday1_prc();
 
-      fill_CAP_DBD_INP_tot_st_day_2_prc();
+      fill_CAP_DBD_IN_tot_stday2_prc();
 
-      fill_CAP_DBD_INP_tot_st_day_3_prc();
+      fill_CAP_DBD_IN_tot_stday3_prc();
 
       update_succed_final_prc();
       --  prc call 2
       update_model_stat_step_prc(
-        p_num_step = > 1,
-        P_NUM_MODULE = > history_record_global.module,
-        p_flg_stat = > 1
+        p_num_step => 1,
+        P_NUM_MODULE => history_record_global.module,
+        p_flg_stat => 1
       );
 
       COMMIT;
-  end;
+  END;
 
   PROCEDURE create_model_data_prc
     IS
@@ -2669,7 +2601,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
 
       fill_sop_og_periods_prc(history_record_global);
 
-      fill_lmp_bas_camp_plans_prc(history_record_global.dat_start, history_record_global.dat_end);
+      fill_lmp_bas_camp_plans_prc(history_record_global.dat_start, history_record_global.dat_END);
 
       fill_lmp_bas_parameters_prc(history_record_global.module);
 
@@ -2689,7 +2621,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
 
   END;
 
-  procedure delete_null_CAP_DBD_INPUTS_prc is
+  PROCEDURE delete_null_CAP_DBD_INPUTS_prc is
     begin
        DELETE FROM
       LMP.LMP_CAP_DBD_INPUTS t
@@ -2700,7 +2632,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
       
       --lv_cod_run:='CAP1397061401';
       
-  end;
+  END;
 
   FUNCTION run_cap_model_fun(
     p_connection_server IN VARCHAR2,
@@ -2725,21 +2657,21 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
       </soapenv:Envelope>';
 
       fnd.fnd_call_soap_web_srv_prc(
-        CONTENT = > lv_envelope,
-        URL = > 'http://services.msc.ir/osb/LMPCAP/CapacityPlanningService/ExecuteModel',
-        P_OUT_PUT = > lv_output
+        CONTENT => lv_envelope,
+        URL => 'http://services.msc.ir/osb/LMPCAP/CapacityPlanningService/ExecuteModel',
+        P_OUT_PUT => lv_output
       );
 
 
       app_lmp_global_pkg.insert_log_prc(
-        p_fun_nam = > 'APP_LMP_SOP_MODEL_PKG.RUN_SOP_MODEL_FUN',
-        p_inputs = > 'fnd_call_soap_web_srv_prc is ended',
-        p_outputs = > to_char(
+        p_fun_nam => 'APP_LMP_SOP_MODEL_PKG.RUN_SOP_MODEL_FUN',
+        p_inputs => 'fnd_call_soap_web_srv_prc is ENDed',
+        p_outputs => to_char(
           SYSDATE,
           'YYYYMMDD'
         ),
-        p_flg_ok = > 1,
-        p_des_error = > lv_output
+        p_flg_ok => 1,
+        p_des_error => lv_output
       );
 
       RETURN 1;
@@ -2749,7 +2681,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
 
   END;
 
-  procedure call_webservices_prc(
+  PROCEDURE call_webservices_prc(
     p_flg_run_service IN NUMBER)is
     lv_msg VARCHAR2(1000);
     lv_connection_server VARCHAR2(30);
@@ -2757,7 +2689,7 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
     begin
         --call webservice
       IF nvl(p_flg_run_service, 0) = 1 THEN BEGIN
-      lv_msg := Fnd.Fnd_Sms_And_Email_Pkg.Send_Non_Adv_Sms_Fun(
+      lv_msg := Fnd.Fnd_Sms_And_Email_Pkg.SEND_Non_Adv_Sms_Fun(
       sys.odciVarchar2List('09131657097'),
       p_Messagebodies => 'DONE' || ' : ' || to_char(SYSDATE, 'MM/DD HH24:MI')
       );
@@ -2773,10 +2705,78 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
       FROM
       v$database;
       
-      lv_num := APP_LMP_CAP_TOT_MODEL_PKG.run_cap_model_fun( p_connection_server , p_identifierName => '1');
+      lv_num := run_cap_model_fun( lv_connection_server , p_identifierName => '1');
     
     END IF;
-  end;
+  END;
+
+  PROCEDURE FILL_BAS_RUN_HISTORIES_PRC (
+    p_date_start IN DATE,
+    P_date_END IN DATE,
+    p_description IN VARCHAR2
+    ) IS
+    lv_last_plan_dat DATE;
+    lv_MAS_RUN_ID NUMBER;
+    BEGIN
+      SELECT
+        MAX(cc.Dat_Calde) INTO lv_last_plan_dat
+      FROM
+        aac_lmp_calENDar_viw cc
+      WHERE
+        cc.v_Dat_Calde_In_6 = (
+          SELECT
+            C .v_Dat_Calde_In_6
+          FROM
+            aac_lmp_calENDar_viw C
+          WHERE
+            C .Dat_Calde = trunc(p_date_start)
+        );
+
+      SELECT
+        MAX(t.Msch_Run_History_Id) AS Msch_Run_History_Id
+      INTO
+        lv_MAS_RUN_ID
+      FROM
+        mas.Mas_Msch_Run_Histories t
+      WHERE
+        Nvl(t.Num_Module_Mrhis, 1) = 20
+        AND t.lkp_sta_model_mrhis = 'SUCCESSFUL';
+
+      INSERT INTO
+        LMP_BAS_RUN_HISTORIES (
+          BAS_RUN_HISTORY_ID,
+          COD_RUN_RNHIS,
+          DAT_RUN_RNHIS,
+          NUM_MODULE_RNHIS,
+          STA_RUN_RNHIS,
+          DAT_STRT_HRZN_RNHIS,
+          DAT_END_HRZN_RNHIS,
+          VAL_RUN_RNHIS,
+          DES_DESCRIPTION_RNHIS,
+          LKP_GROUP_RNHIS,
+          FLG_IN_RUN_RNHIS,
+          DAT_LAST_PLAN_RNHIS,
+          mrhis_msch_run_history_id
+        )
+      VALUES
+        (
+          LMP_BAS_RUN_HISTORIES_SEQ.NEXTVAL,
+          code_run_global_variable,
+          SYSDATE,
+          3,
+          0,
+          p_date_START,
+          p_date_END,
+          TO_CHAR(SYSDATE, 'YYYYMMDD'),
+          p_description,
+          'LMP',
+          1,
+          lv_last_plan_dat,
+          lv_MAS_RUN_ID
+        );
+
+      COMMIT;
+  END;
 
   PROCEDURE run_model_manual_prc(
     p_flg_run_service IN NUMBER) IS
@@ -2825,14 +2825,14 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
       H.NUM_MODULE_RNHIS = 0
       AND trunc(h.create_date) >= trunc(SYSDATE);
 
-    --* get dat_start, dat_end, module from lmp_bas_run_histories table.
+    --* get dat_start, dat_END, module from lmp_bas_run_histories table.
     SELECT
       t.dat_strt_hrzn_rnhis,
-      t.dat_end_hrzn_rnhis,
+      t.dat_END_hrzn_rnhis,
       t.num_module_rnhis 
     INTO
       history_record_global.dat_start,
-      history_record_global.dat_end,
+      history_record_global.dat_END,
       history_record_global.module
     FROM
       lmp_bas_run_histories t
@@ -2840,3 +2840,6 @@ OR REPLACE PACKAGE BODY "AAA_CAP_MODEL_HEDAYAT" IS
       t.cod_run_rnhis = code_run_global_variable;
 
 END "AAA_CAP_MODEL_HEDAYAT";
+
+
+

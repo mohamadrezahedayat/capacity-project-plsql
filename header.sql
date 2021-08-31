@@ -24,7 +24,8 @@ OR REPLACE PACKAGE "AAA_CAP_MODEL_HEDAYAT" IS
   );
 
   --! main procedure
-  PROCEDURE run_model_manual_prc(p_flg_run_service IN NUMBER);
+  PROCEDURE run_model_manual_prc(
+    p_flg_run_service IN NUMBER);
 
 END "AAA_CAP_MODEL_HEDAYAT";
 
